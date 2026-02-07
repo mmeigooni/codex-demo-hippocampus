@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoginWithGitHubButton } from "@/components/auth/LoginWithGitHubButton";
 
 export default function Home() {
   return (
@@ -18,9 +18,7 @@ export default function Home() {
           <p className="text-zinc-300">
             Shared episodic memory for Codex teams.
           </p>
-          <Button className="w-full" size="lg">
-            Login with GitHub (coming in Wave 04)
-          </Button>
+          <LoginWithGitHubButton />
         </CardContent>
       </Card>
     </div>
