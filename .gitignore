@@ -20,3 +20,5 @@ pnpm-debug.log*
 
 # Codex worktrees
 .worktrees/
+
+*.tsbuildinfo
