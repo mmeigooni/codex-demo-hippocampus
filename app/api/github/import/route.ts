@@ -1,5 +1,15 @@
-import { fetchMergedPRs } from "@/lib/github/client";
+import {
+  fetchMergedPRs,
+  fetchPRDiff,
+  fetchPRReviews,
+} from "@/lib/github/client";
 import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
+import { encodeEpisode } from "@/lib/codex/encoder";
+import {
+  executeSearch,
+  generateSearchRules,
+  summarizeTokenReduction,
+} from "@/lib/codex/search";
 import { createServerClient } from "@/lib/supabase/server";
 
 function getFallbackGitHubToken() {
@@ -117,34 +127,53 @@ export async function POST(request: Request) {
           });
 
           try {
-            const { data: episode, error: episodeError } = await supabase
+            const [reviews, diff] = await Promise.all([
+              fetchPRReviews(owner, repo, pr.number, providerToken),
+              fetchPRDiff(owner, repo, pr.number, providerToken),
+            ]);
+
+            const reviewComments = reviews.flatMap((review) => {
+              const commentBodies = review.comments.map((comment) => comment.body);
+              return review.body ? [review.body, ...commentBodies] : commentBodies;
+            });
+
+            const searchRules = await generateSearchRules(
+              reviewComments,
+              `repo=${owner}/${repo};pr=${pr.number};title=${pr.title}`,
+            );
+
+            const snippets = executeSearch(diff, searchRules.search_rules);
+            const reduction = summarizeTokenReduction(diff, snippets);
+
+            const encoded = await encodeEpisode({
+              owner,
+              repo,
+              pr,
+              reviews,
+              snippets: snippets.map((snippet) => snippet.text),
+            });
+
+            const { data: insertedEpisode, error: insertError } = await supabase
               .from("episodes")
               .insert({
                 repo_id: repoRecord.id,
-                source_pr_number: pr.number,
-                title: pr.title,
-                who: pr.authorLogin,
-                what_happened: `Imported PR #${pr.number} (${pr.title}) from ${fullName}`,
-                the_pattern: "placeholder",
-                the_fix: "placeholder",
-                why_it_matters: "placeholder",
-                salience_score: 3,
-                triggers: ["imported", "placeholder"],
-                source_url: pr.htmlUrl,
-                happened_at: pr.mergedAt,
+                ...encoded.episode,
               })
-              .select("id,title,source_pr_number")
+              .select("id,title,source_pr_number,salience_score,the_pattern,triggers")
               .single();
 
-            if (episodeError || !episode) {
-              throw new Error(episodeError?.message ?? "Failed to create placeholder episode");
+            if (insertError || !insertedEpisode) {
+              throw new Error(insertError?.message ?? "Failed to create encoded episode");
             }
 
             created += 1;
             emit({
               type: "episode_created",
               data: {
-                episode,
+                episode: insertedEpisode,
+                review_count: encoded.reviewCount,
+                snippet_count: encoded.snippetCount,
+                token_reduction: reduction,
               },
             });
           } catch (error) {
