@@ -1,14 +1,15 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 
 export default function DashboardPage() {
+  const demoRepo = process.env.DEMO_REPO ?? "mmeigooni/shopflow-platform";
+
   return (
-    <Card className="border-zinc-800 bg-zinc-900/40">
-      <CardHeader>
-        <CardTitle className="text-zinc-100">Dashboard</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-zinc-300">Connect a repo to build your brain.</p>
-      </CardContent>
-    </Card>
+    <section className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="text-2xl font-semibold text-zinc-100">Dashboard</h2>
+        <p className="text-zinc-300">Connect a repository to start importing memory episodes.</p>
+      </div>
+      <OnboardingFlow demoRepoFullName={demoRepo} />
+    </section>
   );
 }
