@@ -2,6 +2,10 @@
 
 import { useMemo, useState } from "react";
 
+import { BrainScene } from "@/components/brain/BrainScene";
+import type { BrainEdgeModel, BrainNodeModel } from "@/components/brain/types";
+import { NeuralActivityFeed } from "@/components/feed/NeuralActivityFeed";
+import type { ActivityEventView } from "@/components/feed/ActivityCard";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
@@ -10,9 +14,22 @@ interface OnboardingFlowProps {
   demoRepoFullName: string;
 }
 
+type ImportPhase = "idle" | "importing" | "ready" | "error";
+
 interface ParsedImportEvent {
   type: string;
   data: Record<string, unknown>;
+}
+
+const PHASE_ORDER: Record<ImportPhase, number> = {
+  idle: 0,
+  importing: 1,
+  ready: 2,
+  error: 3,
+};
+
+function moveForwardPhase(current: ImportPhase, next: ImportPhase) {
+  return PHASE_ORDER[next] >= PHASE_ORDER[current] ? next : current;
 }
 
 function extractEventsFromBuffer(rawBuffer: string) {
@@ -43,40 +60,165 @@ function extractEventsFromBuffer(rawBuffer: string) {
   return { events, remainder };
 }
 
+function toActivityEvent(event: ImportEvent, index: number): ActivityEventView {
+  const prefix = `${event.type}-${index}`;
+
+  if (event.type === "pr_found") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Discovered ${String(event.data.count ?? 0)} merged pull requests`,
+      raw: event.data,
+    };
+  }
+
+  if (event.type === "encoding_start") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Encoding PR #${String(event.data.pr_number ?? "?")}`,
+      subtitle: String(event.data.title ?? "Untitled PR"),
+      raw: event.data,
+    };
+  }
+
+  if (event.type === "episode_created") {
+    const episode = event.data.episode as
+      | { title?: string; salience_score?: number; the_pattern?: string; triggers?: string[] }
+      | undefined;
+
+    const reduction = event.data.token_reduction as
+      | { reductionRatio?: number; rawTokens?: number; reducedTokens?: number }
+      | undefined;
+
+    const ratio = reduction?.reductionRatio ?? 0;
+
+    return {
+      id: prefix,
+      type: event.type,
+      title: episode?.title ?? "Episode created",
+      subtitle: `pattern: ${String(episode?.the_pattern ?? "unknown")}`,
+      salience: Number(episode?.salience_score ?? 0),
+      triggers: Array.isArray(episode?.triggers) ? episode.triggers : [],
+      snippet:
+        reduction && typeof ratio === "number"
+          ? `token reduction ${(ratio * 100).toFixed(0)}% (${reduction.reducedTokens}/${reduction.rawTokens})`
+          : undefined,
+      raw: event.data,
+    };
+  }
+
+  if (event.type === "encoding_error") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Import error on PR #${String(event.data.pr_number ?? "?")}`,
+      subtitle: String(event.data.message ?? "Unknown error"),
+      raw: event.data,
+    };
+  }
+
+  return {
+    id: prefix,
+    type: event.type,
+    title: `Import complete: ${String(event.data.total ?? 0)} episodes created`,
+    raw: event.data,
+  };
+}
+
+function buildBrainGraph(events: ImportEvent[]) {
+  const nodes = new Map<string, BrainNodeModel>();
+  const edges: BrainEdgeModel[] = [];
+
+  for (const event of events) {
+    if (event.type !== "episode_created") {
+      continue;
+    }
+
+    const episode = event.data.episode as
+      | {
+          id?: string;
+          title?: string;
+          salience_score?: number;
+          the_pattern?: string;
+          triggers?: string[];
+        }
+      | undefined;
+
+    if (!episode?.id || !episode.title) {
+      continue;
+    }
+
+    const episodeNodeId = `episode-${episode.id}`;
+    const episodeNode: BrainNodeModel = {
+      id: episodeNodeId,
+      type: "episode",
+      label: episode.title,
+      salience: Number(episode.salience_score ?? 0),
+      triggers: Array.isArray(episode.triggers) ? episode.triggers : [],
+    };
+
+    nodes.set(episodeNodeId, episodeNode);
+
+    const rulePattern = String(episode.the_pattern ?? "unknown-pattern").slice(0, 80);
+    const ruleNodeId = `rule-${rulePattern.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+    if (!nodes.has(ruleNodeId)) {
+      nodes.set(ruleNodeId, {
+        id: ruleNodeId,
+        type: "rule",
+        label: rulePattern,
+        salience: Math.max(4, Number(episode.salience_score ?? 0)),
+        triggers: Array.isArray(episode.triggers) ? episode.triggers : [],
+      });
+    }
+
+    edges.push({
+      id: `${episodeNodeId}-${ruleNodeId}`,
+      source: episodeNodeId,
+      target: ruleNodeId,
+      weight: Math.max(0.2, Math.min(1, Number(episode.salience_score ?? 0) / 10)),
+    });
+  }
+
+  return {
+    nodes: Array.from(nodes.values()),
+    edges,
+  };
+}
+
 export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
   const [events, setEvents] = useState<ImportEvent[]>([]);
-  const [isImporting, setIsImporting] = useState(false);
+  const [phase, setPhase] = useState<ImportPhase>("idle");
   const [error, setError] = useState<string | null>(null);
 
+  const activityEvents = useMemo(() => events.map((event, index) => toActivityEvent(event, index)), [events]);
+  const graph = useMemo(() => buildBrainGraph(events), [events]);
+
   const statusText = useMemo(() => {
-    if (error) {
-      return error;
+    if (phase === "importing") {
+      return "Import in progress. Neural feed is live.";
     }
 
-    if (isImporting) {
-      return "Import in progress...";
+    if (phase === "ready") {
+      const completeEvent = events.findLast((event) => event.type === "complete");
+      return `Import complete. ${String(completeEvent?.data.total ?? 0)} episodes created.`;
     }
 
-    const latestEvent = events[events.length - 1];
-    if (!latestEvent) {
-      return "Select a repository to begin.";
+    if (phase === "error") {
+      return error ?? "Import encountered an error.";
     }
 
-    if (latestEvent.type === "complete") {
-      const total = String(latestEvent.data.total ?? "0");
-      return `Import complete. ${total} episodes created.`;
-    }
-
-    return `Last event: ${latestEvent.type}`;
-  }, [error, events, isImporting]);
+    return "Select a repository to begin.";
+  }, [events, error, phase]);
 
   const startImport = async (repoSelection: ImportRepoRequest) => {
     const fullName = `${repoSelection.owner}/${repoSelection.repo}`;
     setActiveRepo(fullName);
     setEvents([]);
     setError(null);
-    setIsImporting(true);
+    setPhase("importing");
 
     try {
       const response = await fetch("/api/github/import", {
@@ -104,44 +246,54 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
         buffer += decoder.decode(value, { stream: true });
         const parsed = extractEventsFromBuffer(buffer);
-        if (parsed.events.length > 0) {
-          setEvents((current) => [...current, ...(parsed.events as ImportEvent[])]);
-        }
         buffer = parsed.remainder;
+
+        if (parsed.events.length > 0) {
+          setEvents((current) => {
+            const next = [...current, ...(parsed.events as ImportEvent[])];
+
+            const latest = next[next.length - 1];
+            if (latest?.type === "encoding_error") {
+              setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "error"));
+            }
+            if (latest?.type === "complete") {
+              setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
+            }
+
+            return next;
+          });
+        }
       }
+
+      setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
     } catch (importError) {
       const message = importError instanceof Error ? importError.message : "Import failed";
       setError(message);
-    } finally {
-      setIsImporting(false);
+      setPhase("error");
     }
   };
 
   return (
     <div className="space-y-6">
-      <RepoSelector demoRepoFullName={demoRepoFullName} onSelectRepo={startImport} disabled={isImporting} />
+      <RepoSelector
+        demoRepoFullName={demoRepoFullName}
+        onSelectRepo={startImport}
+        disabled={phase === "importing"}
+      />
 
       <Card className="border-zinc-800 bg-zinc-900/40">
         <CardHeader>
-          <CardTitle className="text-zinc-100">Neural activity stream</CardTitle>
+          <CardTitle className="text-zinc-100">Neural activity and memory graph</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-zinc-300">{statusText}</p>
           {activeRepo ? <p className="text-xs text-zinc-500">Active repo: {activeRepo}</p> : null}
 
-          <div className="max-h-72 space-y-2 overflow-auto rounded-md border border-zinc-800 bg-zinc-950/70 p-3">
-            {events.length === 0 ? (
-              <p className="text-sm text-zinc-500">Waiting for events...</p>
-            ) : (
-              events.map((event, index) => (
-                <div key={`${event.type}-${index}`} className="rounded border border-zinc-800 bg-zinc-900/50 p-2">
-                  <p className="font-mono text-xs text-cyan-300">{event.type}</p>
-                  <pre className="mt-1 overflow-auto text-xs text-zinc-300">
-                    {JSON.stringify(event.data, null, 2)}
-                  </pre>
-                </div>
-              ))
-            )}
+          <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+            <BrainScene nodes={graph.nodes} edges={graph.edges} />
+            <div className="max-h-[440px] overflow-auto pr-1">
+              <NeuralActivityFeed events={activityEvents} maxItems={14} />
+            </div>
           </div>
         </CardContent>
       </Card>
