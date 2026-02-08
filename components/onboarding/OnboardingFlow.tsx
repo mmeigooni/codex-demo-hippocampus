@@ -1,13 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
 import type { BrainEdgeModel, BrainNodeModel } from "@/components/brain/types";
 import { NeuralActivityFeed } from "@/components/feed/NeuralActivityFeed";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
+import { ConsolidationCTA } from "@/components/onboarding/ConsolidationCTA";
+import { DistributionCTA } from "@/components/onboarding/DistributionCTA";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useConsolidationStream } from "@/hooks/useConsolidationStream";
+import { useDistributionStream } from "@/hooks/useDistributionStream";
+import type { ConsolidationEvent } from "@/lib/codex/types";
 import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 
 interface OnboardingFlowProps {
@@ -16,6 +21,15 @@ interface OnboardingFlowProps {
 
 type ImportPhase = "idle" | "importing" | "ready" | "error";
 type StorageMode = "supabase" | "memory-fallback";
+type OnboardingPhase =
+  | "idle"
+  | "importing"
+  | "ready"
+  | "consolidating"
+  | "consolidated"
+  | "distributing"
+  | "distributed"
+  | "error";
 
 interface ParsedImportEvent {
   type: string;
@@ -52,14 +66,18 @@ const BrainScene = dynamic(
   },
 );
 
-const PHASE_ORDER: Record<ImportPhase, number> = {
+const PHASE_ORDER: Record<OnboardingPhase, number> = {
   idle: 0,
   importing: 1,
   ready: 2,
-  error: 3,
+  consolidating: 3,
+  consolidated: 4,
+  distributing: 5,
+  distributed: 6,
+  error: 7,
 };
 
-function moveForwardPhase(current: ImportPhase, next: ImportPhase) {
+function moveForwardPhase(current: OnboardingPhase, next: OnboardingPhase) {
   return PHASE_ORDER[next] >= PHASE_ORDER[current] ? next : current;
 }
 
@@ -165,8 +183,107 @@ function toActivityEvent(event: ImportEvent, index: number): ActivityEventView {
     type: event.type,
     title: `Import complete: ${String(event.data.total ?? 0)} episodes created`,
     subtitle: failed > 0 ? `${failed} PR(s) failed encoding` : undefined,
+    variant: "import",
     raw: event.data,
   };
+}
+
+function consolidationEventToActivity(event: ConsolidationEvent, index: number): ActivityEventView | null {
+  const prefix = `consolidation-${event.type}-${index}`;
+  const data = (event.data ?? {}) as Record<string, unknown>;
+
+  if (
+    event.type === "reasoning_start" ||
+    event.type === "reasoning_delta" ||
+    event.type === "reasoning_complete" ||
+    event.type === "response_start" ||
+    event.type === "response_delta"
+  ) {
+    return null;
+  }
+
+  if (event.type === "consolidation_start") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Consolidation started for ${String(data.repo_full_name ?? "repository")}`,
+      subtitle: `${String(data.episode_count ?? 0)} episodes, ${String(data.existing_rule_count ?? 0)} existing rules`,
+      variant: "consolidation",
+      raw: data,
+    };
+  }
+
+  if (event.type === "pattern_detected") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Pattern detected: ${String(data.name ?? "unknown")}`,
+      subtitle: String(data.summary ?? "Pattern summary unavailable"),
+      variant: "consolidation",
+      raw: data,
+    };
+  }
+
+  if (event.type === "rule_promoted") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Rule promoted: ${String(data.title ?? "Untitled rule")}`,
+      subtitle: String(data.description ?? "Rule promoted"),
+      triggers: Array.isArray(data.triggers) ? (data.triggers as string[]) : [],
+      variant: "consolidation",
+      raw: data,
+    };
+  }
+
+  if (event.type === "salience_updated") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Salience updated for episode ${String(data.episode_id ?? "unknown")}`,
+      subtitle: String(data.reason ?? "Salience updated"),
+      salience: Number(data.salience_score ?? 0),
+      variant: "consolidation",
+      raw: data,
+    };
+  }
+
+  if (event.type === "contradiction_found") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: "Contradiction detected",
+      subtitle: String(data.reason ?? "Incompatible episode pair found"),
+      variant: "consolidation",
+      raw: data,
+    };
+  }
+
+  if (event.type === "consolidation_complete") {
+    const summary = (data.summary ?? {}) as Record<string, unknown>;
+    const counts = (summary.counts ?? {}) as Record<string, unknown>;
+    return {
+      id: prefix,
+      type: event.type,
+      title: "Consolidation complete",
+      subtitle: `${String(counts.rules_promoted ?? 0)} rules promoted, ${String(counts.salience_updates ?? 0)} salience updates`,
+      variant: "consolidation",
+      raw: data,
+    };
+  }
+
+  if (event.type === "consolidation_error") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: "Consolidation failed",
+      subtitle: String(data.message ?? "Unexpected consolidation error"),
+      variant: "consolidation",
+      raw: data,
+    };
+  }
+
+  return null;
 }
 
 async function loadGraph(repoSelection: ImportRepoRequest) {
@@ -204,35 +321,120 @@ async function loadGraph(repoSelection: ImportRepoRequest) {
 
 export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
+  const [activeRepoId, setActiveRepoId] = useState<string | null>(null);
   const [activeSelection, setActiveSelection] = useState<ImportRepoRequest | null>(null);
   const [lastSelection, setLastSelection] = useState<ImportRepoRequest | null>(null);
   const [events, setEvents] = useState<ImportEvent[]>([]);
-  const [phase, setPhase] = useState<ImportPhase>("idle");
+  const [phase, setPhase] = useState<OnboardingPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [storageMode, setStorageMode] = useState<StorageMode | null>(null);
   const [graph, setGraph] = useState<GraphPayload>(EMPTY_GRAPH);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState<string | null>(null);
+  const [consolidationRepoId, setConsolidationRepoId] = useState<string | null>(null);
+  const [distributionRepoId, setDistributionRepoId] = useState<string | null>(null);
+  const graphRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processedConsolidationEventCountRef = useRef(0);
+
+  const {
+    runConsolidation,
+    phase: consolidationPhase,
+    events: consolidationEvents,
+    progress: consolidationProgress,
+    isRunning: isConsolidating,
+    error: consolidationError,
+    summary: consolidationSummary,
+    reasoningText,
+    isReasoningActive,
+  } = useConsolidationStream();
+
+  const {
+    runDistribution,
+    isDistributing,
+    distributionResult,
+    distributionPhase,
+    copiedMarkdown,
+    copyDistributionMarkdown,
+  } = useDistributionStream();
 
   const activityEvents = useMemo(() => {
-    const mappedEvents = events.map((event, index) => toActivityEvent(event, index));
+    const importActivityEvents = events.map((event, index) => toActivityEvent(event, index));
+    const consolidationActivityEvents = consolidationEvents
+      .map((event, index) => consolidationEventToActivity(event, index))
+      .filter((event): event is ActivityEventView => event !== null);
 
-    if (phase === "importing" && mappedEvents.length === 0 && activeRepo) {
+    const mergedEvents = [...importActivityEvents, ...consolidationActivityEvents];
+
+    if (isReasoningActive || reasoningText) {
+      mergedEvents.push({
+        id: "reasoning-live",
+        type: "reasoning",
+        title: "Model reasoning",
+        variant: "reasoning",
+        reasoningText,
+        isStreamingReasoning: isReasoningActive,
+        raw: { text: reasoningText },
+      });
+    }
+
+    if (distributionPhase && isDistributing) {
+      mergedEvents.push({
+        id: `distribution-phase-${distributionPhase}`,
+        type: "distribution_progress",
+        title: distributionPhase,
+        variant: "distribution",
+        raw: { phase: distributionPhase },
+      });
+    }
+
+    if (distributionResult) {
+      mergedEvents.push({
+        id: `distribution-result-${distributionResult.prNumber ?? distributionResult.reason ?? "complete"}`,
+        type: distributionResult.error ? "distribution_error" : "distribution_complete",
+        title: distributionResult.error
+          ? "Distribution failed"
+          : distributionResult.skippedPr
+            ? "Distribution preview generated"
+            : "Distribution complete",
+        subtitle: distributionResult.error
+          ? distributionResult.error
+          : distributionResult.prUrl
+            ? `PR #${distributionResult.prNumber ?? "?"} is ready`
+            : distributionResult.reason,
+        variant: "distribution",
+        raw: distributionResult as unknown as Record<string, unknown>,
+      });
+    }
+
+    if (phase === "importing" && mergedEvents.length === 0 && activeRepo) {
       return [
         {
           id: `bootstrap-${activeRepo}`,
           type: "import_bootstrap",
           title: `Preparing ${activeRepo}`,
           subtitle: "Verifying repository access and loading merged pull requests...",
+          variant: "import",
           raw: { repo: activeRepo },
         } satisfies ActivityEventView,
       ];
     }
 
-    return mappedEvents;
-  }, [activeRepo, events, phase]);
+    return mergedEvents;
+  }, [
+    activeRepo,
+    consolidationEvents,
+    distributionPhase,
+    distributionResult,
+    events,
+    isDistributing,
+    isReasoningActive,
+    phase,
+    reasoningText,
+  ]);
 
   const statusText = useMemo(() => {
+    const activeError = error ?? consolidationError ?? distributionResult?.error ?? null;
+
     if (phase === "importing") {
       if (events.length === 0) {
         return "Preparing import. Verifying repository access and scanning merged pull requests.";
@@ -266,14 +468,42 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       return `Import complete. ${total} episodes created.`;
     }
 
+    if (phase === "consolidating") {
+      return "Consolidating memories...";
+    }
+
+    if (phase === "consolidated") {
+      return "Consolidation complete. Ready to distribute.";
+    }
+
+    if (phase === "distributing") {
+      return "Distributing to repo...";
+    }
+
+    if (phase === "distributed") {
+      if (distributionResult?.error) {
+        return distributionResult.error;
+      }
+
+      if (distributionResult?.prUrl) {
+        return `Distribution complete. PR #${distributionResult.prNumber ?? "?"} created.`;
+      }
+
+      if (distributionResult?.skippedPr) {
+        return "Distribution preview generated. Open a PR manually.";
+      }
+
+      return "Distribution complete.";
+    }
+
     if (phase === "error") {
-      return error ?? "Import encountered an error.";
+      return activeError ?? "Workflow encountered an error.";
     }
 
     return "Select a repository to begin.";
-  }, [events, error, phase]);
+  }, [consolidationError, distributionResult, error, events, phase]);
 
-  const refreshGraph = async (repoSelection: ImportRepoRequest) => {
+  const refreshGraph = useCallback(async (repoSelection: ImportRepoRequest) => {
     setGraphLoading(true);
     setGraphError(null);
 
@@ -286,7 +516,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     } finally {
       setGraphLoading(false);
     }
-  };
+  }, []);
 
   const startImport = async (repoSelection: ImportRepoRequest) => {
     setLastSelection(repoSelection);
@@ -294,6 +524,14 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
     const fullName = `${repoSelection.owner}/${repoSelection.repo}`;
     setActiveRepo(fullName);
+    setActiveRepoId(null);
+    setConsolidationRepoId(null);
+    setDistributionRepoId(null);
+    processedConsolidationEventCountRef.current = 0;
+    if (graphRefreshDebounceRef.current) {
+      clearTimeout(graphRefreshDebounceRef.current);
+      graphRefreshDebounceRef.current = null;
+    }
     setEvents([]);
     setError(null);
     setStorageMode(null);
@@ -347,6 +585,11 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           }
 
           if (chunkEvents.some((event) => event.type === "complete")) {
+            const completeEvent = chunkEvents.findLast((event) => event.type === "complete");
+            const completeData = completeEvent?.data as Record<string, unknown> | undefined;
+            if (typeof completeData?.repo_id === "string") {
+              setActiveRepoId(completeData.repo_id);
+            }
             setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
           }
         }
@@ -361,6 +604,133 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     }
   };
 
+  const handleRunConsolidation = async () => {
+    if (!activeRepoId) {
+      return;
+    }
+
+    setError(null);
+    setConsolidationRepoId(activeRepoId);
+    setDistributionRepoId(null);
+    setPhase("consolidating");
+    await runConsolidation(activeRepoId);
+  };
+
+  const handleRunDistribution = async () => {
+    if (!activeRepoId || !consolidationSummary?.pack) {
+      return;
+    }
+
+    setError(null);
+    setDistributionRepoId(activeRepoId);
+    setPhase("distributing");
+    await runDistribution(activeRepoId);
+  };
+
+  useEffect(() => {
+    if (!consolidationRepoId || consolidationRepoId !== activeRepoId) {
+      return;
+    }
+
+    if (isConsolidating) {
+      setPhase((current) => moveForwardPhase(current, "consolidating"));
+      return;
+    }
+
+    if (consolidationSummary) {
+      setPhase((current) => moveForwardPhase(current, "consolidated"));
+    }
+  }, [activeRepoId, consolidationRepoId, consolidationSummary, isConsolidating]);
+
+  useEffect(() => {
+    if (!distributionRepoId || distributionRepoId !== activeRepoId) {
+      return;
+    }
+
+    if (isDistributing) {
+      setPhase((current) => moveForwardPhase(current, "distributing"));
+      return;
+    }
+
+    if (distributionResult && !distributionResult.error) {
+      setPhase((current) => moveForwardPhase(current, "distributed"));
+    }
+  }, [activeRepoId, distributionRepoId, distributionResult, isDistributing]);
+
+  useEffect(() => {
+    if (!consolidationError) {
+      return;
+    }
+
+    setError(consolidationError);
+    setPhase("error");
+  }, [consolidationError]);
+
+  useEffect(() => {
+    if (!distributionResult?.error) {
+      return;
+    }
+
+    setError(distributionResult.error);
+    setPhase("error");
+  }, [distributionResult]);
+
+  useEffect(() => {
+    if (!activeSelection || !activeRepoId || consolidationRepoId !== activeRepoId) {
+      return;
+    }
+
+    const lastProcessed = processedConsolidationEventCountRef.current;
+    if (consolidationEvents.length <= lastProcessed) {
+      return;
+    }
+
+    const pendingEvents = consolidationEvents.slice(lastProcessed);
+    processedConsolidationEventCountRef.current = consolidationEvents.length;
+
+    let shouldDebounceRefresh = false;
+    let shouldRefreshImmediately = false;
+
+    for (const event of pendingEvents) {
+      if (event.type === "rule_promoted" || event.type === "salience_updated") {
+        shouldDebounceRefresh = true;
+      }
+
+      if (event.type === "consolidation_complete") {
+        shouldRefreshImmediately = true;
+      }
+    }
+
+    if (shouldDebounceRefresh) {
+      if (graphRefreshDebounceRef.current) {
+        clearTimeout(graphRefreshDebounceRef.current);
+      }
+
+      const selectionSnapshot = activeSelection;
+      graphRefreshDebounceRef.current = setTimeout(() => {
+        graphRefreshDebounceRef.current = null;
+        void refreshGraph(selectionSnapshot);
+      }, 2000);
+    }
+
+    if (shouldRefreshImmediately) {
+      if (graphRefreshDebounceRef.current) {
+        clearTimeout(graphRefreshDebounceRef.current);
+        graphRefreshDebounceRef.current = null;
+      }
+
+      void refreshGraph(activeSelection);
+    }
+  }, [activeRepoId, activeSelection, consolidationEvents, consolidationRepoId, refreshGraph]);
+
+  useEffect(() => {
+    return () => {
+      if (graphRefreshDebounceRef.current) {
+        clearTimeout(graphRefreshDebounceRef.current);
+      }
+    };
+  }, []);
+
   const noConsolidatedRules = activeSelection && !graphLoading && graph.stats.ruleCount === 0;
 
   return (
@@ -368,7 +738,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       <RepoSelector
         demoRepoFullName={demoRepoFullName}
         onSelectRepo={startImport}
-        disabled={phase === "importing"}
+        disabled={phase === "importing" || phase === "consolidating" || phase === "distributing"}
       />
 
       <Card className="border-zinc-800 bg-zinc-900/40">
@@ -423,6 +793,31 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           </div>
         </CardContent>
       </Card>
+
+      {PHASE_ORDER[phase] >= PHASE_ORDER.ready ? (
+        <ConsolidationCTA
+          phase={phase}
+          dreamPhase={consolidationPhase}
+          onRun={handleRunConsolidation}
+          isRunning={isConsolidating}
+          progress={consolidationProgress}
+          reasoningText={reasoningText}
+          isReasoningActive={isReasoningActive}
+          error={phase === "error" ? error : null}
+        />
+      ) : null}
+
+      {PHASE_ORDER[phase] >= PHASE_ORDER.consolidated ? (
+        <DistributionCTA
+          phase={phase}
+          onDistribute={handleRunDistribution}
+          isDistributing={isDistributing}
+          distributionResult={distributionResult}
+          distributionPhase={distributionPhase}
+          onCopyMarkdown={copyDistributionMarkdown}
+          copiedMarkdown={copiedMarkdown}
+        />
+      ) : null}
     </div>
   );
 }
