@@ -1,4 +1,5 @@
 import {
+  fetchRepo,
   fetchMergedPRs,
   fetchPRDiff,
   fetchPRReviews,
@@ -11,10 +12,6 @@ import {
   summarizeTokenReduction,
 } from "@/lib/codex/search";
 import { createServerClient } from "@/lib/supabase/server";
-
-function getFallbackGitHubToken() {
-  return process.env.GITHUB_TOKEN ?? null;
-}
 
 function buildSseMessage(event: ImportEvent) {
   return `data: ${JSON.stringify(event)}\n\n`;
@@ -84,12 +81,36 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const providerToken = sessionResult.data.session?.provider_token ?? getFallbackGitHubToken() ?? undefined;
+  const providerToken = sessionResult.data.session?.provider_token;
+  if (!providerToken) {
+    return Response.json(
+      {
+        error:
+          "Missing GitHub provider token. Re-authenticate with GitHub to import public repositories.",
+      },
+      { status: 400 },
+    );
+  }
   const userContext: ProfileUserContext = {
     id: user.id,
     githubUsername: user.user_metadata?.user_name ?? user.user_metadata?.preferred_username ?? null,
     avatarUrl: user.user_metadata?.avatar_url ?? null,
   };
+
+  try {
+    const targetRepo = await fetchRepo(owner, repo, providerToken);
+    if (targetRepo.private) {
+      return Response.json(
+        {
+          error: "Private repositories are not supported in public-only mode.",
+        },
+        { status: 403 },
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to verify repository visibility";
+    return Response.json({ error: message }, { status: 400 });
+  }
 
   const encoder = new TextEncoder();
 

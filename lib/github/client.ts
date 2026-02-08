@@ -121,6 +121,21 @@ export async function fetchUserRepos(token: string): Promise<GitHubRepo[]> {
   }
 }
 
+export async function fetchRepo(owner: string, repo: string, token?: string): Promise<GitHubRepo> {
+  const octokit = createGitHubClient(token);
+
+  try {
+    const response = await octokit.rest.repos.get({
+      owner,
+      repo,
+    });
+
+    return toRepo(response.data);
+  } catch (error) {
+    throw parseGitHubError(error);
+  }
+}
+
 export async function fetchMergedPRs(
   owner: string,
   repo: string,
