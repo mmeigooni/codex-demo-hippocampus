@@ -21,6 +21,11 @@ import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent } from "@/lib/codex/types";
 import { graphNodeIdFromConsolidationEvent } from "@/lib/feed/cross-selection";
 import { groupImportActivityEvents, toImportActivityEvent } from "@/lib/feed/import-activity";
+import {
+  resolveImportStreamMode,
+  stripReplayManifest,
+  type ImportStreamMode,
+} from "@/lib/feed/import-stream-mode";
 import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 
 interface OnboardingFlowProps {
@@ -273,6 +278,9 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const graphRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedConsolidationEventCountRef = useRef(0);
   const importReplaySelectionRef = useRef<ImportRepoRequest | null>(null);
+  const importReplayRunIdRef = useRef<number | null>(null);
+  const importRunIdRef = useRef(0);
+  const importAbortControllerRef = useRef<AbortController | null>(null);
 
   const {
     runConsolidation,
@@ -445,31 +453,58 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     return "Select a repository to begin.";
   }, [consolidationError, distributionResult, error, events, phase]);
 
-  const refreshGraph = useCallback(async (repoSelection: ImportRepoRequest) => {
-    setGraphLoading(true);
-    setGraphError(null);
+  const refreshGraph = useCallback(
+    async (repoSelection: ImportRepoRequest, options?: { guardRunId?: number }) => {
+      const guardRunId = options?.guardRunId;
+      if (guardRunId !== undefined && importRunIdRef.current !== guardRunId) {
+        return;
+      }
 
-    try {
-      const graphPayload = await loadGraph(repoSelection);
-      setGraph(graphPayload);
-    } catch (graphFetchError) {
-      const message = graphFetchError instanceof Error ? graphFetchError.message : "Failed to load memory graph";
-      setGraphError(message);
-    } finally {
-      setGraphLoading(false);
-    }
-  }, []);
+      setGraphLoading(true);
+      setGraphError(null);
+
+      try {
+        const graphPayload = await loadGraph(repoSelection);
+        if (guardRunId !== undefined && importRunIdRef.current !== guardRunId) {
+          return;
+        }
+        setGraph(graphPayload);
+      } catch (graphFetchError) {
+        if (guardRunId !== undefined && importRunIdRef.current !== guardRunId) {
+          return;
+        }
+        const message = graphFetchError instanceof Error ? graphFetchError.message : "Failed to load memory graph";
+        setGraphError(message);
+      } finally {
+        if (guardRunId !== undefined && importRunIdRef.current !== guardRunId) {
+          return;
+        }
+        setGraphLoading(false);
+      }
+    },
+    [],
+  );
 
   const applyImportEvents = useCallback(
-    (chunkEvents: ImportEvent[], repoSelection: ImportRepoRequest, replayMode: boolean) => {
+    (chunkEvents: ImportEvent[], repoSelection: ImportRepoRequest, replayMode: boolean, runId?: number) => {
+      if (runId !== undefined && importRunIdRef.current !== runId) {
+        return;
+      }
+
       const visibleEvents = chunkEvents.filter((event) => event.type !== "replay_manifest");
       if (visibleEvents.length === 0) {
         return;
       }
 
+      if (runId !== undefined && importRunIdRef.current !== runId) {
+        return;
+      }
       setEvents((current) => [...current, ...visibleEvents]);
 
       if (visibleEvents.some((event) => event.type === "encoding_error")) {
+        if (runId !== undefined && importRunIdRef.current !== runId) {
+          return;
+        }
         setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "error"));
       }
 
@@ -485,6 +520,9 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           }
 
           const nodeId = `episode-${data.episode.id}`;
+          if (runId !== undefined && importRunIdRef.current !== runId) {
+            return;
+          }
           setVisibleNodeIds((current) => {
             if (!current || current.has(nodeId)) {
               return current;
@@ -498,20 +536,29 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       }
 
       if (!replayMode && visibleEvents.some((event) => event.type === "episode_created" || event.type === "complete")) {
-        void refreshGraph(repoSelection);
+        void refreshGraph(repoSelection, runId !== undefined ? { guardRunId: runId } : undefined);
       }
 
       if (visibleEvents.some((event) => event.type === "complete")) {
         const completeEvent = visibleEvents.findLast((event) => event.type === "complete");
         const completeData = completeEvent?.data as Record<string, unknown> | undefined;
         if (typeof completeData?.repo_id === "string") {
+          if (runId !== undefined && importRunIdRef.current !== runId) {
+            return;
+          }
           setActiveRepoId(completeData.repo_id);
         }
 
         if (replayMode) {
+          if (runId !== undefined && importRunIdRef.current !== runId) {
+            return;
+          }
           setVisibleNodeIds(null);
         }
 
+        if (runId !== undefined && importRunIdRef.current !== runId) {
+          return;
+        }
         setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
       }
     },
@@ -520,25 +567,43 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
   const { enqueue: enqueueImportReplay, cancel: cancelImportReplay } = useTheatricalScheduler<ImportEvent>({
     onEventRelease: (event) => {
+      const replayRunId = importReplayRunIdRef.current;
+      if (replayRunId === null || importRunIdRef.current !== replayRunId) {
+        return;
+      }
+
       const selection = importReplaySelectionRef.current;
       if (!selection) {
         return;
       }
 
-      applyImportEvents([event], selection, true);
+      applyImportEvents([event], selection, true, replayRunId);
     },
     onComplete: () => {
+      const replayRunId = importReplayRunIdRef.current;
+      if (replayRunId === null || importRunIdRef.current !== replayRunId) {
+        return;
+      }
+
       const selection = importReplaySelectionRef.current;
       importReplaySelectionRef.current = null;
+      importReplayRunIdRef.current = null;
       if (!selection) {
         return;
       }
 
-      void refreshGraph(selection);
+      void refreshGraph(selection, { guardRunId: replayRunId });
     },
   });
 
   const startImport = async (repoSelection: ImportRepoRequest) => {
+    importAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    importAbortControllerRef.current = controller;
+
+    const runId = importRunIdRef.current + 1;
+    importRunIdRef.current = runId;
+
     setLastSelection(repoSelection);
     setActiveSelection(repoSelection);
 
@@ -554,14 +619,13 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     }
     cancelImportReplay();
     importReplaySelectionRef.current = null;
+    importReplayRunIdRef.current = null;
     setEvents([]);
     setError(null);
     setStorageMode(null);
-    setVisibleNodeIds(null);
+    setVisibleNodeIds(new Set());
     setCrossSelection({ selectedNodeId: null, source: "feed" });
     setPhase("importing");
-
-    await refreshGraph(repoSelection);
 
     try {
       const response = await fetch("/api/github/import", {
@@ -570,6 +634,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(repoSelection),
+        signal: controller.signal,
       });
 
       if (!response.ok || !response.body) {
@@ -585,8 +650,9 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let streamMode: "unknown" | "live" | "replay" = "unknown";
+      let streamMode: ImportStreamMode = "unknown";
       const replayEvents: ImportEvent[] = [];
+      const bufferedUnknownEvents: ImportEvent[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -600,46 +666,73 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
         if (parsed.events.length > 0) {
           const chunkEvents = parsed.events as ImportEvent[];
-          const replayDetected = chunkEvents.some((event) => {
-            if (event.type !== "replay_manifest") {
-              return false;
+          const nextMode = resolveImportStreamMode(streamMode, chunkEvents);
+
+          if (streamMode === "unknown" && nextMode === "live") {
+            if (importRunIdRef.current !== runId) {
+              return;
             }
-
-            const data = event.data as Record<string, unknown>;
-            return data.mode === "import_replay";
-          });
-
-          if (streamMode === "unknown" && replayDetected) {
-            streamMode = "replay";
-            setVisibleNodeIds(new Set());
+            setVisibleNodeIds(null);
+            void refreshGraph(repoSelection, { guardRunId: runId });
           }
 
-          if (streamMode === "replay") {
-            replayEvents.push(...chunkEvents.filter((event) => event.type !== "replay_manifest"));
+          streamMode = nextMode;
+
+          if (streamMode === "unknown") {
+            bufferedUnknownEvents.push(...chunkEvents);
             continue;
           }
 
-          if (streamMode === "unknown") {
-            streamMode = "live";
+          if (streamMode === "replay") {
+            if (bufferedUnknownEvents.length > 0) {
+              replayEvents.push(...stripReplayManifest(bufferedUnknownEvents));
+              bufferedUnknownEvents.length = 0;
+            }
+            replayEvents.push(...stripReplayManifest(chunkEvents));
+            continue;
           }
 
-          applyImportEvents(chunkEvents, repoSelection, false);
+          if (bufferedUnknownEvents.length > 0) {
+            applyImportEvents(bufferedUnknownEvents, repoSelection, false, runId);
+            bufferedUnknownEvents.length = 0;
+          }
+
+          applyImportEvents(chunkEvents, repoSelection, false, runId);
         }
       }
 
       if (streamMode === "replay") {
         if (replayEvents.length === 0) {
+          if (importRunIdRef.current !== runId) {
+            return;
+          }
           setVisibleNodeIds(null);
           setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
         } else {
+          if (importRunIdRef.current !== runId) {
+            return;
+          }
           importReplaySelectionRef.current = repoSelection;
+          importReplayRunIdRef.current = runId;
           enqueueImportReplay(replayEvents);
         }
       } else {
-        await refreshGraph(repoSelection);
+        if (bufferedUnknownEvents.length > 0) {
+          applyImportEvents(bufferedUnknownEvents, repoSelection, false, runId);
+        }
+        await refreshGraph(repoSelection, { guardRunId: runId });
+        if (importRunIdRef.current !== runId) {
+          return;
+        }
         setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
       }
     } catch (importError) {
+      if (importError instanceof Error && importError.name === "AbortError") {
+        return;
+      }
+      if (importRunIdRef.current !== runId) {
+        return;
+      }
       const message = importError instanceof Error ? importError.message : "Import failed";
       setError(message);
       setPhase("error");
@@ -772,7 +865,9 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       }
 
       cancelImportReplay();
+      importAbortControllerRef.current?.abort();
       importReplaySelectionRef.current = null;
+      importReplayRunIdRef.current = null;
     };
   }, [cancelImportReplay]);
 
