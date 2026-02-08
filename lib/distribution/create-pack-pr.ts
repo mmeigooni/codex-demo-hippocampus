@@ -18,6 +18,12 @@ interface CreatePackPRResult {
   sha: string;
 }
 
+export interface PackPRProgressCallbacks {
+  onBranchCreated?: (branch: string) => void;
+  onFileCommitted?: (sha: string) => void;
+  onPRCreating?: () => void;
+}
+
 const PACK_PATH = ".codex/team-memory.md";
 
 function createGitHubClient(token: string) {
@@ -92,7 +98,10 @@ async function maybeGetExistingFileSha({
   }
 }
 
-export async function createPackPR(input: CreatePackPRInput): Promise<CreatePackPRResult> {
+export async function createPackPR(
+  input: CreatePackPRInput,
+  progress?: PackPRProgressCallbacks,
+): Promise<CreatePackPRResult> {
   const octokit = createGitHubClient(input.token);
   const branch = `hippocampus/team-memory-${Date.now()}`;
 
@@ -111,6 +120,7 @@ export async function createPackPR(input: CreatePackPRInput): Promise<CreatePack
       ref: `refs/heads/${branch}`,
       sha: headSha,
     });
+    progress?.onBranchCreated?.(branch);
 
     const existingSha = await maybeGetExistingFileSha({
       octokit,
@@ -128,7 +138,12 @@ export async function createPackPR(input: CreatePackPRInput): Promise<CreatePack
       branch,
       sha: existingSha ?? undefined,
     });
+    const commitSha = commitResponse.data.commit.sha;
+    if (commitSha) {
+      progress?.onFileCommitted?.(commitSha);
+    }
 
+    progress?.onPRCreating?.();
     const pullResponse = await octokit.request("POST /repos/{owner}/{repo}/pulls", {
       owner: input.owner,
       repo: input.repo,
@@ -138,7 +153,6 @@ export async function createPackPR(input: CreatePackPRInput): Promise<CreatePack
       head: branch,
     });
 
-    const commitSha = commitResponse.data.commit.sha;
     const prUrl = pullResponse.data.html_url;
 
     if (!commitSha || !prUrl) {

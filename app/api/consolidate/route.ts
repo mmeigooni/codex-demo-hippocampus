@@ -38,6 +38,70 @@ function buildSseMessage(event: ConsolidationEvent) {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
 
+function createThrottledReasoningEmit(emit: Emit, intervalMs = 200) {
+  let buffered: { runId: string; text: string } | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const emitBuffered = () => {
+    if (!buffered) {
+      return;
+    }
+
+    const payload = buffered;
+    buffered = null;
+    emit({
+      type: "reasoning_delta",
+      data: {
+        run_id: payload.runId,
+        text: payload.text,
+      },
+    });
+  };
+
+  const clearTimer = () => {
+    if (!timer) {
+      return;
+    }
+
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  const scheduleFlush = () => {
+    if (timer) {
+      return;
+    }
+
+    timer = setTimeout(() => {
+      timer = null;
+      emitBuffered();
+    }, intervalMs);
+  };
+
+  return {
+    bufferDelta(runId: string, text: string) {
+      buffered = { runId, text };
+      scheduleFlush();
+    },
+    flush(runId?: string) {
+      clearTimer();
+      if (!buffered) {
+        return;
+      }
+
+      if (runId && buffered.runId !== runId) {
+        return;
+      }
+
+      emitBuffered();
+    },
+    dispose() {
+      clearTimer();
+      buffered = null;
+    },
+  };
+}
+
 function normalizeTextArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -118,6 +182,7 @@ async function runSupabaseConsolidation({
   userContext: ProfileUserContext;
 }) {
   let runId: string | null = null;
+  const throttledReasoningEmit = createThrottledReasoningEmit(emit);
 
   try {
     const profileId = await ensureProfileId(userContext, supabase);
@@ -221,12 +286,41 @@ async function runSupabaseConsolidation({
       throw new Error("No episodes found for selected repository");
     }
 
-    const result = await consolidateEpisodes({
-      repoFullName: selectedRepo.full_name,
-      episodes,
-      existingRules,
-      signal: request.signal,
-    });
+    const result = await consolidateEpisodes(
+      {
+        repoFullName: selectedRepo.full_name,
+        episodes,
+        existingRules,
+        signal: request.signal,
+      },
+      {
+        onReasoningStart: () => {
+          emit({ type: "reasoning_start", data: { run_id: runId } });
+        },
+        onReasoningDelta: (text) => {
+          if (!runId) {
+            return;
+          }
+          throttledReasoningEmit.bufferDelta(runId, text);
+        },
+        onReasoningComplete: (text) => {
+          if (!runId) {
+            return;
+          }
+          throttledReasoningEmit.flush(runId);
+          emit({ type: "reasoning_complete", data: { run_id: runId, text } });
+        },
+        onResponseStart: () => {
+          emit({ type: "response_start", data: { run_id: runId } });
+        },
+        onResponseDelta: (text) => {
+          emit({
+            type: "response_delta",
+            data: { run_id: runId, partial_length: text.length },
+          });
+        },
+      },
+    );
 
     for (const pattern of result.patterns) {
       emit({ type: "pattern_detected", data: pattern });
@@ -321,6 +415,7 @@ async function runSupabaseConsolidation({
       },
     });
   } catch (error) {
+    throttledReasoningEmit.flush(runId ?? undefined);
     const message = error instanceof Error ? error.message : "Unexpected consolidation error";
 
     if (runId) {
@@ -341,6 +436,8 @@ async function runSupabaseConsolidation({
         message,
       },
     });
+  } finally {
+    throttledReasoningEmit.dispose();
   }
 }
 
@@ -356,6 +453,7 @@ async function runMemoryFallbackConsolidation({
   user: { id: string };
 }) {
   let runId: string | null = null;
+  const throttledReasoningEmit = createThrottledReasoningEmit(emit);
 
   try {
     const selectedRepo = body?.repo_id
@@ -411,12 +509,41 @@ async function runMemoryFallbackConsolidation({
       throw new Error("No episodes found for selected repository");
     }
 
-    const result = await consolidateEpisodes({
-      repoFullName: selectedRepo.full_name,
-      episodes,
-      existingRules,
-      signal: request.signal,
-    });
+    const result = await consolidateEpisodes(
+      {
+        repoFullName: selectedRepo.full_name,
+        episodes,
+        existingRules,
+        signal: request.signal,
+      },
+      {
+        onReasoningStart: () => {
+          emit({ type: "reasoning_start", data: { run_id: runId } });
+        },
+        onReasoningDelta: (text) => {
+          if (!runId) {
+            return;
+          }
+          throttledReasoningEmit.bufferDelta(runId, text);
+        },
+        onReasoningComplete: (text) => {
+          if (!runId) {
+            return;
+          }
+          throttledReasoningEmit.flush(runId);
+          emit({ type: "reasoning_complete", data: { run_id: runId, text } });
+        },
+        onResponseStart: () => {
+          emit({ type: "response_start", data: { run_id: runId } });
+        },
+        onResponseDelta: (text) => {
+          emit({
+            type: "response_delta",
+            data: { run_id: runId, partial_length: text.length },
+          });
+        },
+      },
+    );
 
     for (const pattern of result.patterns) {
       emit({ type: "pattern_detected", data: pattern });
@@ -492,6 +619,7 @@ async function runMemoryFallbackConsolidation({
       },
     });
   } catch (error) {
+    throttledReasoningEmit.flush(runId ?? undefined);
     const message = error instanceof Error ? error.message : "Unexpected consolidation error";
     if (runId) {
       failConsolidationRun(runId, message);
@@ -504,6 +632,8 @@ async function runMemoryFallbackConsolidation({
         message,
       },
     });
+  } finally {
+    throttledReasoningEmit.dispose();
   }
 }
 
