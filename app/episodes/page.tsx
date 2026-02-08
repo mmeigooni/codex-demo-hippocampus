@@ -1,6 +1,11 @@
 import { EpisodesExplorer } from "@/components/episodes/EpisodesExplorer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { isMissingProfilesTableError, SCHEMA_NOT_READY_PROFILES_MESSAGE } from "@/lib/supabase/schema-guard";
+import { listEpisodesForUser, listReposForUser } from "@/lib/fallback/runtime-memory-store";
+import {
+  isProfilesSchemaNotReadyError,
+  resolveStorageModeAfterProfilesPreflight,
+  SCHEMA_NOT_READY_PROFILES_MESSAGE,
+} from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
 
 function normalizeTextArray(value: unknown): string[] {
@@ -37,13 +42,15 @@ export default async function EpisodesPage() {
     );
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  let storageMode: "supabase" | "memory-fallback";
 
-  if (profileError && isMissingProfilesTableError(profileError)) {
+  try {
+    storageMode = await resolveStorageModeAfterProfilesPreflight(supabase);
+  } catch (error) {
+    if (!isProfilesSchemaNotReadyError(error)) {
+      throw error;
+    }
+
     return (
       <section className="space-y-4">
         <div className="space-y-1">
@@ -57,6 +64,55 @@ export default async function EpisodesPage() {
         </Card>
       </section>
     );
+  }
+
+  if (storageMode === "memory-fallback") {
+    const repos = listReposForUser(user.id);
+    const repoMap = new Map(repos.map((repo) => [repo.id, repo.full_name]));
+    const episodes = listEpisodesForUser(user.id);
+
+    const mappedEpisodes = episodes.map((episode) => ({
+      id: episode.id,
+      title: episode.title,
+      repoFullName: repoMap.get(episode.repo_id) ?? "unknown/repo",
+      who: episode.who,
+      whatHappened: episode.what_happened,
+      pattern: episode.the_pattern,
+      fix: episode.the_fix,
+      whyItMatters: episode.why_it_matters,
+      salience: Number(episode.salience_score ?? 0),
+      triggers: normalizeTextArray(episode.triggers),
+      sourceUrl: episode.source_url,
+      happenedAt: episode.happened_at,
+      sourcePrNumber: episode.source_pr_number,
+    }));
+
+    return (
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-semibold text-zinc-100">Episodes</h2>
+          <p className="text-zinc-300">
+            Explore encoded incidents and inspect who/what/pattern/fix/why context for each episode.
+          </p>
+        </div>
+        <Card className="border-amber-500/30 bg-amber-500/10">
+          <CardContent className="py-3 text-xs text-amber-100/90">
+            Local fallback mode active: reading episodes from in-memory runtime storage because Supabase schema
+            cache is unavailable.
+          </CardContent>
+        </Card>
+        <EpisodesExplorer episodes={mappedEpisodes} />
+      </section>
+    );
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (profileError) {
+    throw new Error(profileError.message);
   }
 
   const { data: repos } = profile?.id

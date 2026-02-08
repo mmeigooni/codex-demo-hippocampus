@@ -15,6 +15,7 @@ interface OnboardingFlowProps {
 }
 
 type ImportPhase = "idle" | "importing" | "ready" | "error";
+type StorageMode = "supabase" | "memory-fallback";
 
 interface ParsedImportEvent {
   type: string;
@@ -205,6 +206,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [events, setEvents] = useState<ImportEvent[]>([]);
   const [phase, setPhase] = useState<ImportPhase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [storageMode, setStorageMode] = useState<StorageMode | null>(null);
 
   const activityEvents = useMemo(() => events.map((event, index) => toActivityEvent(event, index)), [events]);
   const graph = useMemo(() => buildBrainGraph(events), [events]);
@@ -232,6 +234,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setActiveRepo(fullName);
     setEvents([]);
     setError(null);
+    setStorageMode(null);
     setPhase("importing");
 
     try {
@@ -246,6 +249,11 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       if (!response.ok || !response.body) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(payload?.error ?? "Failed to start import stream");
+      }
+
+      const modeHeader = response.headers.get("x-hippocampus-storage-mode");
+      if (modeHeader === "supabase" || modeHeader === "memory-fallback") {
+        setStorageMode(modeHeader);
       }
 
       const reader = response.body.getReader();
@@ -300,6 +308,12 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           <p className="text-sm text-zinc-300" aria-live="polite">
             {statusText}
           </p>
+          {storageMode === "memory-fallback" ? (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100/90">
+              Local fallback mode active: import data is being persisted to in-memory runtime storage because
+              Supabase schema cache is unavailable.
+            </div>
+          ) : null}
           {phase === "error" ? (
             <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
               <p>{error ?? "Import encountered an error."}</p>
