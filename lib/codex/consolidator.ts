@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createCodexThread, runWithSchema } from "@/lib/codex/client";
+import { createCodexThread, runStreamedWithSchema, runWithSchema } from "@/lib/codex/client";
 import {
   buildRuleDescriptionForKey,
   buildRuleTitleForKey,
@@ -98,6 +98,14 @@ interface ConsolidateEpisodesInput {
   episodes: ConsolidationEpisodeInput[];
   existingRules: ConsolidationRuleInput[];
   signal?: AbortSignal;
+}
+
+export interface ConsolidationStreamCallbacks {
+  onReasoningStart?: (text: string) => void;
+  onReasoningDelta?: (text: string) => void;
+  onReasoningComplete?: (text: string) => void;
+  onResponseStart?: (text: string) => void;
+  onResponseDelta?: (text: string) => void;
 }
 
 const configuredMinSupport = Number.parseInt(process.env.RULE_PROMOTION_MIN_SUPPORT ?? "2", 10);
@@ -299,7 +307,10 @@ function buildPrompt(input: ConsolidateEpisodesInput, promptTemplate: string) {
   ].join("\n");
 }
 
-export async function consolidateEpisodes(input: ConsolidateEpisodesInput): Promise<ConsolidationResult> {
+export async function consolidateEpisodes(
+  input: ConsolidateEpisodesInput,
+  streamCallbacks?: ConsolidationStreamCallbacks,
+): Promise<ConsolidationResult> {
   if (input.episodes.length === 0) {
     return {
       patterns: [],
@@ -316,7 +327,21 @@ export async function consolidateEpisodes(input: ConsolidateEpisodesInput): Prom
 
   const thread = createCodexThread("consolidation");
   const prompt = buildPrompt(input, promptTemplate);
-  const output = await runWithSchema<RawConsolidationModelOutput>(thread, prompt, CONSOLIDATION_SCHEMA, input.signal);
+  const output = streamCallbacks
+    ? await runStreamedWithSchema<RawConsolidationModelOutput>(
+        thread,
+        prompt,
+        CONSOLIDATION_SCHEMA,
+        {
+          onReasoningStart: (_id, text) => streamCallbacks.onReasoningStart?.(text),
+          onReasoningDelta: (_id, text) => streamCallbacks.onReasoningDelta?.(text),
+          onReasoningComplete: (_id, text) => streamCallbacks.onReasoningComplete?.(text),
+          onResponseStart: (_id, text) => streamCallbacks.onResponseStart?.(text),
+          onResponseDelta: (_id, text) => streamCallbacks.onResponseDelta?.(text),
+        },
+        input.signal,
+      )
+    : await runWithSchema<RawConsolidationModelOutput>(thread, prompt, CONSOLIDATION_SCHEMA, input.signal);
 
   const sanitized = sanitizeConsolidationOutput(output, input.episodes);
 
