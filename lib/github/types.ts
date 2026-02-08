@@ -76,6 +76,7 @@ export interface ImportCompleteData {
   total: number;
   failed: number;
   skipped: number;
+  repo_id?: string;
 }
 
 export interface ImportEvent<T = Record<string, unknown>> {

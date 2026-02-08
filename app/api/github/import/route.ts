@@ -338,7 +338,7 @@ export async function POST(request: Request) {
           }
         }
 
-        emit({ type: "complete", data: { total: created, failed, skipped } });
+        emit({ type: "complete", data: { total: created, failed, skipped, repo_id: repoRecordId } });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unexpected import error";
         emit({
