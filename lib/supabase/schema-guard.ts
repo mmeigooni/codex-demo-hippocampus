@@ -7,7 +7,7 @@ interface SupabaseLikeClient {
   from: (table: string) => {
     select: (columns: string) => {
       limit: (count: number) => {
-        maybeSingle: () => Promise<{ error: unknown | null }>;
+        maybeSingle: () => unknown;
       };
     };
   };
@@ -69,10 +69,12 @@ export function isProfilesSchemaNotReadyError(error: unknown): error is Profiles
 }
 
 export async function assertProfilesSchemaReady(supabase: SupabaseLikeClient) {
-  const { error } = await supabase.from("profiles").select("id").limit(1).maybeSingle();
+  const result = (await supabase.from("profiles").select("id").limit(1).maybeSingle()) as {
+    error?: unknown | null;
+  } | null;
+  const error = result?.error ?? null;
 
   if (error && isMissingProfilesTableError(error)) {
     throw new ProfilesSchemaNotReadyError();
   }
 }
-
