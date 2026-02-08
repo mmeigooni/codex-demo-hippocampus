@@ -1,4 +1,5 @@
 import type { EpisodeInsertPayload } from "@/lib/codex/types";
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 export interface RuntimeRepoRecord {
   id: string;
@@ -21,6 +22,7 @@ export interface RuntimeEpisodeRecord extends EpisodeInsertPayload {
 export interface RuntimeRuleRecord {
   id: string;
   repo_id: string;
+  rule_key: PatternKey;
   title: string;
   description: string;
   triggers: string[];
@@ -191,6 +193,18 @@ export function findRepoByIdForUser(userId: string, repoId: string): RuntimeRepo
   return repo ? cloneRepo(repo) : null;
 }
 
+export function findRepoByFullNameForUser(userId: string, fullName: string): RuntimeRepoRecord | null {
+  const repos = getState().reposByUser.get(userId);
+  if (!repos) {
+    return null;
+  }
+
+  const normalized = fullName.trim().toLowerCase();
+  const repo = Array.from(repos.values()).find((entry) => entry.full_name.toLowerCase() === normalized) ?? null;
+
+  return repo ? cloneRepo(repo) : null;
+}
+
 export function insertEpisodeForRepo(repoId: string, payload: EpisodeInsertPayload): RuntimeEpisodeRecord {
   const state = getState();
   const timestamp = nowIso();
@@ -202,6 +216,7 @@ export function insertEpisodeForRepo(repoId: string, payload: EpisodeInsertPaylo
     title: payload.title,
     who: payload.who,
     what_happened: payload.what_happened,
+    pattern_key: payload.pattern_key,
     the_pattern: payload.the_pattern,
     the_fix: payload.the_fix,
     why_it_matters: payload.why_it_matters,
@@ -234,6 +249,7 @@ export function listRulesForRepo(repoId: string): RuntimeRuleRecord[] {
 }
 
 interface UpsertRuleInput {
+  rule_key: PatternKey;
   title: string;
   description: string;
   triggers: string[];
@@ -247,7 +263,7 @@ export function upsertRulesForRepo(repoId: string, inputs: UpsertRuleInput[]): R
 
   for (const input of inputs) {
     const now = nowIso();
-    const existing = rules.find((rule) => rule.title.toLowerCase() === input.title.toLowerCase());
+    const existing = rules.find((rule) => rule.rule_key === input.rule_key);
 
     if (existing) {
       existing.description = input.description;
@@ -261,6 +277,7 @@ export function upsertRulesForRepo(repoId: string, inputs: UpsertRuleInput[]): R
     rules.push({
       id: crypto.randomUUID(),
       repo_id: repoId,
+      rule_key: input.rule_key,
       title: input.title,
       description: input.description,
       triggers: [...input.triggers],

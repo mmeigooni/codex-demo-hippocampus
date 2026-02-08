@@ -4,7 +4,7 @@ import {
   fetchPRDiff,
   fetchPRReviews,
 } from "@/lib/github/client";
-import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
+import type { ImportEpisodeSummary, ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 import { encodeEpisode } from "@/lib/codex/encoder";
 import {
   executeSearch,
@@ -201,6 +201,7 @@ export async function POST(request: Request) {
         emit({ type: "pr_found", data: { count: pullRequests.length } });
 
         let created = 0;
+        let failed = 0;
 
         for (const pr of pullRequests) {
           emit({
@@ -247,14 +248,14 @@ export async function POST(request: Request) {
                         repo_id: repoRecordId,
                         ...encoded.episode,
                       })
-                      .select("id,title,source_pr_number,salience_score,the_pattern,triggers")
+                      .select("id,title,source_pr_number,salience_score,pattern_key,the_pattern,triggers")
                       .single();
 
                     if (insertError || !data) {
                       throw new Error(insertError?.message ?? "Failed to create encoded episode");
                     }
 
-                    return data;
+                    return data as ImportEpisodeSummary;
                   })()
                 : (() => {
                     const episode = insertEpisodeForRepo(repoRecordId, encoded.episode);
@@ -263,9 +264,10 @@ export async function POST(request: Request) {
                       title: episode.title,
                       source_pr_number: episode.source_pr_number,
                       salience_score: episode.salience_score,
+                      pattern_key: episode.pattern_key,
                       the_pattern: episode.the_pattern,
                       triggers: episode.triggers,
-                    };
+                    } satisfies ImportEpisodeSummary;
                   })();
 
             created += 1;
@@ -273,12 +275,14 @@ export async function POST(request: Request) {
               type: "episode_created",
               data: {
                 episode: insertedEpisode,
+                encoding_source: "llm",
                 review_count: encoded.reviewCount,
                 snippet_count: encoded.snippetCount,
                 token_reduction: reduction,
               },
             });
           } catch (error) {
+            failed += 1;
             const message = error instanceof Error ? error.message : "Failed to import PR";
             emit({
               type: "encoding_error",
@@ -290,14 +294,14 @@ export async function POST(request: Request) {
           }
         }
 
-        emit({ type: "complete", data: { total: created } });
+        emit({ type: "complete", data: { total: created, failed } });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unexpected import error";
         emit({
           type: "encoding_error",
           data: { message },
         });
-        emit({ type: "complete", data: { total: 0 } });
+        emit({ type: "complete", data: { total: 0, failed: 1 } });
       } finally {
         controller.close();
       }

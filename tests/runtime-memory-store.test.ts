@@ -58,6 +58,7 @@ describe("runtime memory store", () => {
       title: "Episode A",
       who: "dev1",
       what_happened: "A",
+      pattern_key: "review-hygiene",
       the_pattern: "pattern-a",
       the_fix: "fix-a",
       why_it_matters: "matters-a",
@@ -71,6 +72,7 @@ describe("runtime memory store", () => {
       title: "Episode B",
       who: "dev2",
       what_happened: "B",
+      pattern_key: "review-hygiene",
       the_pattern: "pattern-b",
       the_fix: "fix-b",
       why_it_matters: "matters-b",
@@ -88,6 +90,7 @@ describe("runtime memory store", () => {
     const repo = upsertRepoForUser({ userId: "u1", owner: "acme", name: "one", fullName: "acme/one" });
     upsertRulesForRepo(repo.id, [
       {
+        rule_key: "review-hygiene",
         title: "Guard rails",
         description: "first",
         triggers: ["a"],
@@ -97,6 +100,7 @@ describe("runtime memory store", () => {
     ]);
     upsertRulesForRepo(repo.id, [
       {
+        rule_key: "review-hygiene",
         title: "guard rails",
         description: "second",
         triggers: ["a", "b"],
@@ -130,6 +134,7 @@ describe("runtime memory store", () => {
       title: "Episode A",
       who: "dev1",
       what_happened: "A",
+      pattern_key: "review-hygiene",
       the_pattern: "pattern-a",
       the_fix: "fix-a",
       why_it_matters: "matters-a",
