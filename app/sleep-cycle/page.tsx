@@ -1,6 +1,7 @@
 import { SleepCyclePanel } from "@/components/sleep-cycle/SleepCyclePanel";
 import type { ConsolidationModelOutput } from "@/lib/codex/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isMissingProfilesTableError, SCHEMA_NOT_READY_PROFILES_MESSAGE } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
 
 function normalizePack(maybePack: unknown): ConsolidationModelOutput | null {
@@ -43,11 +44,27 @@ export default async function SleepCyclePage() {
     );
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (profileError && isMissingProfilesTableError(profileError)) {
+    return (
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-semibold text-zinc-100">Sleep Cycle</h2>
+        </div>
+        <Card className="border-amber-500/40 bg-amber-500/10">
+          <CardHeader>
+            <CardTitle className="text-amber-100">Schema not ready</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-amber-100/90">{SCHEMA_NOT_READY_PROFILES_MESSAGE}</CardContent>
+        </Card>
+      </section>
+    );
+  }
 
   const { data: repos } = profile?.id
     ? await supabase
