@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ReasoningCard } from "@/components/feed/ReasoningCard";
 import { DreamState } from "@/components/sleep-cycle/DreamState";
@@ -27,7 +27,6 @@ interface SleepCyclePanelProps {
 
 export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = null }: SleepCyclePanelProps) {
   const [selectedRepoId, setSelectedRepoId] = useState<string>(defaultRepoId ?? repos[0]?.id ?? "");
-  const [distributionCompletePulse, setDistributionCompletePulse] = useState(false);
 
   const {
     runConsolidation,
@@ -57,20 +56,9 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
 
   const livePack = useMemo(() => summary?.pack ?? null, [summary]);
 
-  useEffect(() => {
-    if (!distributionResult || distributionResult.error) {
-      setDistributionCompletePulse(false);
-      return;
-    }
-
-    setDistributionCompletePulse(true);
-    const timeout = setTimeout(() => setDistributionCompletePulse(false), 3000);
-    return () => clearTimeout(timeout);
-  }, [distributionResult]);
-
   const distributeButtonLabel = isDistributing
     ? distributionPhase ?? "Distributing..."
-    : distributionCompletePulse
+    : distributionResult && !distributionResult.error
       ? "Distributed"
       : "Distribute to repo";
 
@@ -79,7 +67,6 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
       return;
     }
 
-    setDistributionCompletePulse(false);
     await runConsolidation(selectedRepoId);
   };
 
