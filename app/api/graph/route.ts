@@ -41,23 +41,27 @@ function clampScore(score: number) {
   return Math.max(0, Math.min(10, Math.round(score)));
 }
 
-function buildGraph(episodes: EpisodeGraphRecord[], rules: RuleGraphRecord[]) {
+export function buildGraph(episodes: EpisodeGraphRecord[], rules: RuleGraphRecord[]) {
   const nodes: BrainNodeModel[] = [];
   const edges: BrainEdgeModel[] = [];
   const episodeSalience = new Map<string, number>();
+  const episodeNodesById = new Map<string, BrainNodeModel>();
 
   for (const episode of episodes) {
     const nodeId = `episode-${episode.id}`;
     const salience = clampScore(episode.salience_score);
     episodeSalience.set(episode.id, salience);
 
-    nodes.push({
+    const episodeNode: BrainNodeModel = {
       id: nodeId,
       type: "episode",
       label: episode.title,
       salience,
       triggers: episode.triggers,
-    });
+    };
+
+    nodes.push(episodeNode);
+    episodeNodesById.set(episode.id, episodeNode);
   }
 
   for (const rule of rules) {
@@ -82,6 +86,11 @@ function buildGraph(episodes: EpisodeGraphRecord[], rules: RuleGraphRecord[]) {
     for (const sourceEpisodeId of rule.source_episode_ids) {
       if (!episodeSalience.has(sourceEpisodeId)) {
         continue;
+      }
+
+      const episodeNode = episodeNodesById.get(sourceEpisodeId);
+      if (episodeNode && !episodeNode.ruleId) {
+        episodeNode.ruleId = rule.id;
       }
 
       const edgeWeight = Math.max(0.2, Math.min(1, (episodeSalience.get(sourceEpisodeId) ?? 0) / 10));

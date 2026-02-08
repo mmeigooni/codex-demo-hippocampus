@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { EpisodeNode } from "@/components/brain/EpisodeNode";
 import { NeuralEdge } from "@/components/brain/NeuralEdge";
@@ -16,7 +16,9 @@ interface BrainGraphProps {
   edges: BrainEdgeModel[];
   layoutNodes?: BrainNodeModel[];
   layoutEdges?: BrainEdgeModel[];
+  externalSelectedNodeId?: string | null;
   onSelectedNodeChange?: (node: PositionedBrainNode | null) => void;
+  onNodeSelectionCommit?: (node: PositionedBrainNode | null) => void;
 }
 
 function computeLayoutNodes(nodes: BrainNodeModel[], edges: BrainEdgeModel[]) {
@@ -110,12 +112,20 @@ export function BrainGraph({
   edges,
   layoutNodes,
   layoutEdges,
+  externalSelectedNodeId,
   onSelectedNodeChange,
+  onNodeSelectionCommit,
 }: BrainGraphProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const nodesForLayout = layoutNodes ?? nodes;
   const edgesForLayout = layoutEdges ?? edges;
+
+  useEffect(() => {
+    if (externalSelectedNodeId !== null && externalSelectedNodeId !== undefined) {
+      setSelectedNodeId(null);
+    }
+  }, [externalSelectedNodeId]);
 
   const positions = useMemo(() => computeLayoutNodes(nodesForLayout, edgesForLayout), [edgesForLayout, nodesForLayout]);
   const positionedNodes = useMemo(
@@ -127,7 +137,8 @@ export function BrainGraph({
     [nodes, positions],
   );
 
-  const selectedNode = positionedNodes.find((node) => node.id === selectedNodeId) ?? null;
+  const effectiveSelectedId = externalSelectedNodeId ?? selectedNodeId;
+  const selectedNode = positionedNodes.find((node) => node.id === effectiveSelectedId) ?? null;
 
   return (
     <group>
@@ -143,7 +154,7 @@ export function BrainGraph({
       })}
 
       {positionedNodes.map((node) => {
-        const isSelected = node.id === selectedNodeId;
+        const isSelected = node.id === effectiveSelectedId;
         const isHovered = node.id === hoveredNodeId;
 
         const onHover = (hovered: boolean) => {
@@ -154,14 +165,15 @@ export function BrainGraph({
         };
 
         const onClick = () => {
-          const nextSelectedId = selectedNodeId === node.id ? null : node.id;
-          setSelectedNodeId(nextSelectedId);
+          const nextSelectedId = effectiveSelectedId === node.id ? null : node.id;
+          const nextSelectedNode = nextSelectedId ? node : null;
 
-          if (nextSelectedId) {
-            onSelectedNodeChange?.(node);
-          } else {
-            onSelectedNodeChange?.(null);
+          if (externalSelectedNodeId === null || externalSelectedNodeId === undefined) {
+            setSelectedNodeId(nextSelectedId);
           }
+
+          onSelectedNodeChange?.(nextSelectedNode);
+          onNodeSelectionCommit?.(nextSelectedNode);
         };
 
         if (node.type === "rule") {
