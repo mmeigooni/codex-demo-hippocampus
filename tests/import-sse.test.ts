@@ -20,8 +20,25 @@ describe("parseJsonSseBuffer", () => {
     expect(parsed.remainder).toContain('"partial"');
   });
 
+  it("parses skipped and complete payloads with skipped count", () => {
+    const input = [
+      'data: {"type":"episode_skipped","data":{"pr_number":99,"title":"Fix retries","reason":"already_imported"}}',
+      "",
+      'data: {"type":"complete","data":{"total":0,"failed":0,"skipped":1}}',
+      "",
+    ].join("\n");
+
+    const parsed = parseJsonSseBuffer(`${input}\n`);
+
+    expect(parsed.events).toHaveLength(2);
+    expect(parsed.events[0]?.type).toBe("episode_skipped");
+    expect((parsed.events[0]?.data as { reason?: string }).reason).toBe("already_imported");
+    expect(parsed.events[1]?.type).toBe("complete");
+    expect((parsed.events[1]?.data as { skipped?: number }).skipped).toBe(1);
+  });
+
   it("ignores invalid json payloads", () => {
-    const parsed = parseJsonSseBuffer('data: invalid-json\n\n');
+    const parsed = parseJsonSseBuffer("data: invalid-json\n\n");
     expect(parsed.events).toHaveLength(0);
     expect(parsed.remainder).toBe("");
   });

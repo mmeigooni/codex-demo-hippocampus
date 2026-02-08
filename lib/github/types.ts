@@ -1,3 +1,5 @@
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
+
 export interface GitHubRepo {
   id: number;
   owner: string;
@@ -56,6 +58,7 @@ export type ImportEventType =
   | "pr_found"
   | "encoding_start"
   | "episode_created"
+  | "episode_skipped"
   | "encoding_error"
   | "complete";
 
@@ -72,10 +75,10 @@ export interface ImportEpisodeSummary {
 export interface ImportCompleteData {
   total: number;
   failed: number;
+  skipped: number;
 }
 
 export interface ImportEvent<T = Record<string, unknown>> {
   type: ImportEventType;
   data: T;
 }
-import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
