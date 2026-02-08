@@ -194,57 +194,90 @@ async function runSupabaseDistribution({
       throw new Error(MISSING_PROVIDER_TOKEN_MESSAGE);
     }
 
-    const remoteRepo = await fetchRepo(selectedRepo.owner, selectedRepo.name, token);
+    try {
+      const remoteRepo = await fetchRepo(selectedRepo.owner, selectedRepo.name, token);
 
-    const prResult = await createPackPR({
-      token,
-      owner: selectedRepo.owner,
-      repo: selectedRepo.name,
-      defaultBranch: remoteRepo.defaultBranch,
-      markdownContent: markdown,
-    });
+      const prResult = await createPackPR({
+        token,
+        owner: selectedRepo.owner,
+        repo: selectedRepo.name,
+        defaultBranch: remoteRepo.defaultBranch,
+        markdownContent: markdown,
+      });
 
-    emit({
-      type: "pr_created",
-      data: {
-        run_id: runId,
-        pr_url: prResult.prUrl,
-        pr_number: prResult.prNumber,
-        branch: prResult.branch,
-      },
-    });
+      emit({
+        type: "pr_created",
+        data: {
+          run_id: runId,
+          pr_url: prResult.prUrl,
+          pr_number: prResult.prNumber,
+          branch: prResult.branch,
+        },
+      });
 
-    const distribution = {
-      status: "completed",
-      mode: "supabase",
-      distributed_at: new Date().toISOString(),
-      skipped_pr: false,
-      pr_url: prResult.prUrl,
-      pr_number: prResult.prNumber,
-      branch: prResult.branch,
-    } satisfies DistributionSummaryMetadata;
-
-    const nextSummary = withDistributionSummary(runSummary, distribution);
-
-    const { error: persistError } = await supabase
-      .from("consolidation_runs")
-      .update({ summary: nextSummary })
-      .eq("id", runId);
-
-    if (persistError) {
-      throw new Error(persistError.message);
-    }
-
-    emit({
-      type: "distribution_complete",
-      data: {
+      const distribution = {
+        status: "completed",
+        mode: "supabase",
+        distributed_at: new Date().toISOString(),
         skipped_pr: false,
-        markdown,
         pr_url: prResult.prUrl,
         pr_number: prResult.prNumber,
         branch: prResult.branch,
-      },
-    });
+      } satisfies DistributionSummaryMetadata;
+
+      const nextSummary = withDistributionSummary(runSummary, distribution);
+
+      const { error: persistError } = await supabase
+        .from("consolidation_runs")
+        .update({ summary: nextSummary })
+        .eq("id", runId);
+
+      if (persistError) {
+        throw new Error(persistError.message);
+      }
+
+      emit({
+        type: "distribution_complete",
+        data: {
+          skipped_pr: false,
+          markdown,
+          pr_url: prResult.prUrl,
+          pr_number: prResult.prNumber,
+          branch: prResult.branch,
+        },
+      });
+      return;
+    } catch (prError) {
+      const message = prError instanceof Error ? prError.message : "Failed to create distribution PR";
+      const distribution = {
+        status: "completed",
+        mode: "supabase",
+        distributed_at: new Date().toISOString(),
+        skipped_pr: true,
+        reason: message,
+        message,
+      } satisfies DistributionSummaryMetadata;
+
+      const nextSummary = withDistributionSummary(runSummary, distribution);
+      const { error: persistError } = await supabase
+        .from("consolidation_runs")
+        .update({ summary: nextSummary })
+        .eq("id", runId);
+
+      if (persistError) {
+        throw new Error(persistError.message);
+      }
+
+      emit({
+        type: "distribution_complete",
+        data: {
+          skipped_pr: true,
+          reason: message,
+          markdown,
+        },
+      });
+      return;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected distribution error";
 
