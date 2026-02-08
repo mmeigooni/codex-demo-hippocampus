@@ -20,6 +20,8 @@ export function LoginWithGitHubButton() {
       const { error: signInError } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
+          // Required for creating branches and PRs on public repositories during distribution.
+          scopes: "public_repo",
           redirectTo: callbackUrl,
         },
       });
