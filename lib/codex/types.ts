@@ -76,6 +76,7 @@ export interface ConsolidationRuleCandidate {
   description: string;
   triggers: string[];
   source_episode_ids: string[];
+  rule_id?: string;
 }
 
 export interface ConsolidationContradiction {
