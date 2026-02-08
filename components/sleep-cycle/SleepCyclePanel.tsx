@@ -2,7 +2,11 @@
 
 import { useMemo, useState } from "react";
 
-import type { ConsolidationEvent, ConsolidationEventType } from "@/lib/codex/types";
+import type {
+  ConsolidationEvent,
+  ConsolidationEventType,
+  DistributionEvent,
+} from "@/lib/codex/types";
 import type { ConsolidationModelOutput } from "@/lib/codex/types";
 import { parseJsonSseBuffer } from "@/lib/sse/parse";
 import { DreamState, type DreamPhase } from "@/components/sleep-cycle/DreamState";
@@ -38,6 +42,25 @@ interface ConsolidationProgress {
   rules: number;
   salienceUpdates: number;
   contradictions: number;
+}
+
+interface DistributionResult {
+  prUrl?: string;
+  prNumber?: number;
+  branch?: string;
+  skippedPr: boolean;
+  reason?: string;
+  markdown?: string;
+  error?: string;
+}
+
+interface DistributionCompleteEventData {
+  skipped_pr: boolean;
+  reason?: string;
+  markdown: string;
+  pr_url?: string;
+  pr_number?: number;
+  branch?: string;
 }
 
 type StorageMode = "supabase" | "memory-fallback";
@@ -145,6 +168,10 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [storageMode, setStorageMode] = useState<StorageMode | null>(null);
+  const [isDistributing, setIsDistributing] = useState(false);
+  const [distributionResult, setDistributionResult] = useState<DistributionResult | null>(null);
+  const [distributionCompletePulse, setDistributionCompletePulse] = useState(false);
+  const [copiedMarkdown, setCopiedMarkdown] = useState(false);
   const [summary, setSummary] = useState<ConsolidationSummary | null>(
     initialPack
       ? {
@@ -165,6 +192,11 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
   );
 
   const livePack = useMemo(() => summary?.pack ?? null, [summary]);
+  const distributeButtonLabel = isDistributing
+    ? "Distributing..."
+    : distributionCompletePulse
+      ? "Distributed"
+      : "Distribute to repo";
 
   const runConsolidation = async () => {
     if (!selectedRepoId) {
@@ -176,6 +208,9 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
     setSummary(null);
     setStorageMode(null);
     setEvents([]);
+    setDistributionResult(null);
+    setDistributionCompletePulse(false);
+    setCopiedMarkdown(false);
     setProgress({
       patterns: 0,
       rules: 0,
@@ -248,6 +283,101 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
     }
   };
 
+  const runDistribution = async () => {
+    if (!selectedRepoId || !livePack) {
+      return;
+    }
+
+    setIsDistributing(true);
+    setDistributionResult(null);
+    setDistributionCompletePulse(false);
+    setCopiedMarkdown(false);
+
+    try {
+      const response = await fetch("/api/distribute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ repo_id: selectedRepoId }),
+      });
+
+      if (!response.ok || !response.body) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Failed to start distribution stream");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const parsed = parseJsonSseBuffer(buffer);
+        buffer = parsed.remainder;
+
+        if (parsed.events.length === 0) {
+          continue;
+        }
+
+        const chunkEvents = parsed.events as DistributionEvent[];
+
+        const completeEvent = chunkEvents.findLast((event) => event.type === "distribution_complete");
+        if (completeEvent) {
+          const data = completeEvent.data as DistributionCompleteEventData;
+          setDistributionResult({
+            prUrl: data.pr_url,
+            prNumber: data.pr_number,
+            branch: data.branch,
+            skippedPr: Boolean(data.skipped_pr),
+            reason: data.reason,
+            markdown: data.markdown,
+          });
+          setDistributionCompletePulse(true);
+          setTimeout(() => setDistributionCompletePulse(false), 3000);
+        }
+
+        const errorEvent = chunkEvents.findLast((event) => event.type === "distribution_error");
+        if (errorEvent) {
+          const data = errorEvent.data as Record<string, unknown>;
+          setDistributionResult({
+            skippedPr: true,
+            error: String(data.message ?? "Distribution failed"),
+          });
+          setDistributionCompletePulse(false);
+        }
+      }
+    } catch (distributionError) {
+      const message = distributionError instanceof Error ? distributionError.message : "Failed to distribute pack";
+      setDistributionResult({
+        skippedPr: true,
+        error: message,
+      });
+      setDistributionCompletePulse(false);
+    } finally {
+      setIsDistributing(false);
+    }
+  };
+
+  const copyDistributionMarkdown = async () => {
+    if (!distributionResult?.markdown) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(distributionResult.markdown);
+      setCopiedMarkdown(true);
+      setTimeout(() => setCopiedMarkdown(false), 2000);
+    } catch {
+      setCopiedMarkdown(false);
+    }
+  };
+
   if (repos.length === 0) {
     return (
       <Card className="border-zinc-800 bg-zinc-900/40">
@@ -275,7 +405,7 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
               value={selectedRepoId}
               onChange={(event) => setSelectedRepoId(event.target.value)}
               className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-              disabled={isRunning}
+              disabled={isRunning || isDistributing}
             >
               {repos.map((repo) => (
                 <option key={repo.id} value={repo.id}>
@@ -286,11 +416,11 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
           </label>
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={runConsolidation} disabled={isRunning || !selectedRepo}>
+            <Button onClick={runConsolidation} disabled={isRunning || isDistributing || !selectedRepo}>
               {isRunning ? "Running sleep cycle..." : "Run sleep cycle"}
             </Button>
             {error ? (
-              <Button onClick={runConsolidation} disabled={isRunning || !selectedRepo} variant="secondary">
+              <Button onClick={runConsolidation} disabled={isRunning || isDistributing || !selectedRepo} variant="secondary">
                 Retry
               </Button>
             ) : null}
@@ -332,6 +462,60 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
         </CardHeader>
         <CardContent>
           <PackOutputView pack={livePack} />
+        </CardContent>
+      </Card>
+
+      <Card className="border-zinc-800 bg-zinc-900/40">
+        <CardHeader>
+          <CardTitle className="text-zinc-100">Distribution</CardTitle>
+          <CardDescription>Create a GitHub PR for `.codex/team-memory.md` from the latest completed run.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button onClick={runDistribution} disabled={isRunning || isDistributing || !selectedRepo || !livePack}>
+            {distributeButtonLabel}
+          </Button>
+
+          {distributionResult?.error ? (
+            <p role="alert" className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
+              {distributionResult.error}
+            </p>
+          ) : null}
+
+          {distributionResult && !distributionResult.error && distributionResult.prUrl ? (
+            <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+              Distribution complete. Open PR{" "}
+              <a
+                href={distributionResult.prUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-emerald-300/70 underline-offset-2"
+              >
+                #{distributionResult.prNumber ?? "?"}
+              </a>
+              {distributionResult.branch ? ` (branch: ${distributionResult.branch})` : ""}.
+            </p>
+          ) : null}
+
+          {distributionResult && !distributionResult.error && distributionResult.skippedPr ? (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100/90">
+              Preview only. PR creation skipped ({distributionResult.reason ?? "memory-fallback"}). Connect Supabase
+              with a GitHub provider token to create PRs.
+            </p>
+          ) : null}
+
+          {distributionResult?.markdown ? (
+            <details className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
+              <summary className="cursor-pointer text-sm text-zinc-200">Rendered `.codex/team-memory.md`</summary>
+              <div className="mt-3 space-y-2">
+                <Button onClick={copyDistributionMarkdown} variant="secondary" size="sm">
+                  {copiedMarkdown ? "Copied" : "Copy markdown"}
+                </Button>
+                <pre className="max-h-80 overflow-auto rounded-md border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-200">
+                  {distributionResult.markdown}
+                </pre>
+              </div>
+            </details>
+          ) : null}
         </CardContent>
       </Card>
 
