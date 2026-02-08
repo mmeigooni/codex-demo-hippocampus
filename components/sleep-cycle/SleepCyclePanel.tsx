@@ -8,6 +8,7 @@ import type {
   DistributionEvent,
 } from "@/lib/codex/types";
 import type { ConsolidationModelOutput } from "@/lib/codex/types";
+import { distributionFallbackMessage } from "@/lib/distribution/ui-state";
 import { parseJsonSseBuffer } from "@/lib/sse/parse";
 import { DreamState, type DreamPhase } from "@/components/sleep-cycle/DreamState";
 import { PackOutputView } from "@/components/sleep-cycle/PackOutputView";
@@ -498,8 +499,7 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
 
           {distributionResult && !distributionResult.error && distributionResult.skippedPr ? (
             <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100/90">
-              Preview only. PR creation skipped ({distributionResult.reason ?? "memory-fallback"}). Connect Supabase
-              with a GitHub provider token to create PRs.
+              {distributionFallbackMessage(distributionResult.reason)}
             </p>
           ) : null}
 
