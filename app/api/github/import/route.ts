@@ -1,4 +1,5 @@
 import {
+  fetchRepo,
   fetchMergedPRs,
   fetchPRDiff,
   fetchPRReviews,
@@ -10,11 +11,12 @@ import {
   generateSearchRules,
   summarizeTokenReduction,
 } from "@/lib/codex/search";
+import {
+  isPrivateRepo,
+  MISSING_PROVIDER_TOKEN_MESSAGE,
+  PRIVATE_REPOS_NOT_SUPPORTED_MESSAGE,
+} from "@/lib/github/public-only-policy";
 import { createServerClient } from "@/lib/supabase/server";
-
-function getFallbackGitHubToken() {
-  return process.env.GITHUB_TOKEN ?? null;
-}
 
 function buildSseMessage(event: ImportEvent) {
   return `data: ${JSON.stringify(event)}\n\n`;
@@ -84,12 +86,35 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const providerToken = sessionResult.data.session?.provider_token ?? getFallbackGitHubToken() ?? undefined;
+  const providerToken = sessionResult.data.session?.provider_token;
+  if (!providerToken) {
+    return Response.json(
+      {
+        error: MISSING_PROVIDER_TOKEN_MESSAGE,
+      },
+      { status: 400 },
+    );
+  }
   const userContext: ProfileUserContext = {
     id: user.id,
     githubUsername: user.user_metadata?.user_name ?? user.user_metadata?.preferred_username ?? null,
     avatarUrl: user.user_metadata?.avatar_url ?? null,
   };
+
+  try {
+    const targetRepo = await fetchRepo(owner, repo, providerToken);
+    if (isPrivateRepo(targetRepo)) {
+      return Response.json(
+        {
+          error: PRIVATE_REPOS_NOT_SUPPORTED_MESSAGE,
+        },
+        { status: 403 },
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to verify repository visibility";
+    return Response.json({ error: message }, { status: 400 });
+  }
 
   const encoder = new TextEncoder();
 
