@@ -104,6 +104,11 @@ export interface ConsolidationResult extends ConsolidationModelOutput {
 
 export type ConsolidationEventType =
   | "consolidation_start"
+  | "reasoning_start"
+  | "reasoning_delta"
+  | "reasoning_complete"
+  | "response_start"
+  | "response_delta"
   | "pattern_detected"
   | "rule_promoted"
   | "contradiction_found"
@@ -119,9 +124,17 @@ export interface ConsolidationEvent<T = unknown> {
 export type DistributionEventType =
   | "distribution_start"
   | "pack_rendered"
+  | "branch_created"
+  | "file_committed"
+  | "pr_creating"
   | "pr_created"
   | "distribution_complete"
   | "distribution_error";
+
+export interface ReasoningDeltaData {
+  text: string;
+  run_id?: string;
+}
 
 export interface DistributionEvent<T = unknown> {
   type: DistributionEventType;
