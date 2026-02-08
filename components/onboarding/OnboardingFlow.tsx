@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
-import type { BrainEdgeModel, BrainNodeModel } from "@/components/brain/types";
+import type {
+  BrainEdgeModel,
+  BrainNodeModel,
+  CrossSelectionState,
+  PositionedBrainNode,
+} from "@/components/brain/types";
 import { NeuralActivityFeed } from "@/components/feed/NeuralActivityFeed";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
 import { ConsolidationCTA } from "@/components/onboarding/ConsolidationCTA";
@@ -14,6 +19,10 @@ import { useConsolidationStream } from "@/hooks/useConsolidationStream";
 import { useDistributionStream } from "@/hooks/useDistributionStream";
 import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent } from "@/lib/codex/types";
+import {
+  graphNodeIdFromConsolidationEvent,
+  graphNodeIdFromImportEvent,
+} from "@/lib/feed/cross-selection";
 import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 
 interface OnboardingFlowProps {
@@ -138,7 +147,7 @@ function toActivityEvent(event: ImportEvent, index: number): ActivityEventView |
 
   if (event.type === "episode_created") {
     const episode = event.data.episode as
-      | { title?: string; salience_score?: number; the_pattern?: string; triggers?: string[] }
+      | { id?: string; title?: string; salience_score?: number; the_pattern?: string; triggers?: string[] }
       | undefined;
 
     const reduction = event.data.token_reduction as
@@ -154,6 +163,7 @@ function toActivityEvent(event: ImportEvent, index: number): ActivityEventView |
       subtitle: `pattern: ${String(episode?.the_pattern ?? "unknown")}`,
       salience: Number(episode?.salience_score ?? 0),
       triggers: Array.isArray(episode?.triggers) ? episode.triggers : [],
+      graphNodeId: graphNodeIdFromImportEvent(event) ?? undefined,
       snippet:
         reduction && typeof ratio === "number"
           ? `token reduction ${(ratio * 100).toFixed(0)}% (${reduction.reducedTokens}/${reduction.rawTokens})`
@@ -237,6 +247,7 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
       title: `Rule promoted: ${String(data.title ?? "Untitled rule")}`,
       subtitle: String(data.description ?? "Rule promoted"),
       triggers: Array.isArray(data.triggers) ? (data.triggers as string[]) : [],
+      graphNodeId: graphNodeIdFromConsolidationEvent(event) ?? undefined,
       variant: "consolidation",
       raw: data,
     };
@@ -249,6 +260,7 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
       title: `Salience updated for episode ${String(data.episode_id ?? "unknown")}`,
       subtitle: String(data.reason ?? "Salience updated"),
       salience: Number(data.salience_score ?? 0),
+      graphNodeId: graphNodeIdFromConsolidationEvent(event) ?? undefined,
       variant: "consolidation",
       raw: data,
     };
@@ -340,6 +352,10 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [consolidationRepoId, setConsolidationRepoId] = useState<string | null>(null);
   const [distributionRepoId, setDistributionRepoId] = useState<string | null>(null);
   const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string> | null>(null);
+  const [crossSelection, setCrossSelection] = useState<CrossSelectionState>({
+    selectedNodeId: null,
+    source: "feed",
+  });
   const graphRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedConsolidationEventCountRef = useRef(0);
   const importReplaySelectionRef = useRef<ImportRepoRequest | null>(null);
@@ -626,6 +642,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setError(null);
     setStorageMode(null);
     setVisibleNodeIds(null);
+    setCrossSelection({ selectedNodeId: null, source: "feed" });
     setPhase("importing");
 
     await refreshGraph(repoSelection);
@@ -861,6 +878,34 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
   const noConsolidatedRules = activeSelection && !graphLoading && graph.stats.ruleCount === 0;
 
+  const handleFeedSelection = useCallback((event: ActivityEventView) => {
+    const graphNodeId = event.graphNodeId;
+    if (!graphNodeId) {
+      return;
+    }
+
+    setCrossSelection((current) => {
+      if (current.selectedNodeId === graphNodeId && current.source === "feed") {
+        return {
+          selectedNodeId: null,
+          source: "feed",
+        };
+      }
+
+      return {
+        selectedNodeId: graphNodeId,
+        source: "feed",
+      };
+    });
+  }, []);
+
+  const handleGraphSelectionCommit = useCallback((node: PositionedBrainNode | null) => {
+    setCrossSelection({
+      selectedNodeId: node?.id ?? null,
+      source: "graph",
+    });
+  }, []);
+
   return (
     <div className="space-y-6">
       <RepoSelector
@@ -914,9 +959,22 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           ) : null}
 
           <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-            <BrainScene nodes={displayNodes} edges={displayEdges} layoutNodes={graph.nodes} layoutEdges={graph.edges} />
+            <BrainScene
+              nodes={displayNodes}
+              edges={displayEdges}
+              layoutNodes={graph.nodes}
+              layoutEdges={graph.edges}
+              externalSelectedNodeId={crossSelection.selectedNodeId}
+              onNodeSelectionCommit={handleGraphSelectionCommit}
+            />
             <div className="max-h-[440px] overflow-auto pr-1">
-              <NeuralActivityFeed events={activityEvents} maxItems={14} />
+              <NeuralActivityFeed
+                events={activityEvents}
+                maxItems={14}
+                selectedNodeId={crossSelection.selectedNodeId}
+                selectionSource={crossSelection.selectedNodeId ? crossSelection.source : null}
+                onSelectEvent={handleFeedSelection}
+              />
             </div>
           </div>
         </CardContent>

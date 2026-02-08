@@ -16,9 +16,18 @@ interface BrainSceneProps {
   edges: BrainEdgeModel[];
   layoutNodes?: BrainNodeModel[];
   layoutEdges?: BrainEdgeModel[];
+  externalSelectedNodeId?: string | null;
+  onNodeSelectionCommit?: (node: PositionedBrainNode | null) => void;
 }
 
-export function BrainScene({ nodes, edges, layoutNodes, layoutEdges }: BrainSceneProps) {
+export function BrainScene({
+  nodes,
+  edges,
+  layoutNodes,
+  layoutEdges,
+  externalSelectedNodeId,
+  onNodeSelectionCommit,
+}: BrainSceneProps) {
   const [selectedNode, setSelectedNode] = useState<PositionedBrainNode | null>(null);
 
   const hasGraphData = useMemo(() => nodes.length > 0, [nodes.length]);
@@ -39,7 +48,9 @@ export function BrainScene({ nodes, edges, layoutNodes, layoutEdges }: BrainScen
               edges={edges}
               layoutNodes={layoutNodes}
               layoutEdges={layoutEdges}
+              externalSelectedNodeId={externalSelectedNodeId}
               onSelectedNodeChange={setSelectedNode}
+              onNodeSelectionCommit={onNodeSelectionCommit}
             />
 
             <OrbitControls

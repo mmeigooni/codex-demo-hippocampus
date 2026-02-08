@@ -18,12 +18,16 @@ export interface ActivityEventView {
   variant?: "import" | "reasoning" | "consolidation" | "distribution";
   reasoningText?: string;
   isStreamingReasoning?: boolean;
+  graphNodeId?: string;
   raw: Record<string, unknown>;
 }
 
 interface ActivityCardProps {
   event: ActivityEventView;
   index: number;
+  selected?: boolean;
+  pinnedFromGraph?: boolean;
+  onSelect?: (event: ActivityEventView) => void;
 }
 
 function resolveBorderClass(event: ActivityEventView) {
@@ -50,7 +54,7 @@ function resolveBorderClass(event: ActivityEventView) {
   return "border-zinc-800";
 }
 
-export function ActivityCard({ event, index }: ActivityCardProps) {
+export function ActivityCard({ event, index, selected = false, pinnedFromGraph = false, onSelect }: ActivityCardProps) {
   if (event.variant === "reasoning") {
     return (
       <ReasoningCard
@@ -61,17 +65,49 @@ export function ActivityCard({ event, index }: ActivityCardProps) {
     );
   }
 
+  const selectable = Boolean(onSelect && event.graphNodeId);
+
+  const handleSelect = () => {
+    if (!selectable || !onSelect) {
+      return;
+    }
+
+    onSelect(event);
+  };
+
   return (
     <motion.article
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.26, delay: index * 0.04 }}
-      className={`space-y-3 rounded-lg border ${resolveBorderClass(event)} bg-zinc-900/70 p-3 [contain-intrinsic-size:220px] [content-visibility:auto]`}
+      className={`space-y-3 rounded-lg border ${resolveBorderClass(event)} bg-zinc-900/70 p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
+        selectable ? "cursor-pointer transition hover:border-cyan-300/40" : ""
+      } ${selected ? "border-cyan-300/70 ring-1 ring-cyan-300/60" : ""} ${
+        pinnedFromGraph ? "border-l-4 border-l-cyan-300/90" : ""
+      }`}
+      onClick={handleSelect}
+      onKeyDown={(eventKey) => {
+        if (!selectable) {
+          return;
+        }
+
+        if (eventKey.key === "Enter" || eventKey.key === " ") {
+          eventKey.preventDefault();
+          handleSelect();
+        }
+      }}
+      role={selectable ? "button" : undefined}
+      tabIndex={selectable ? 0 : undefined}
+      aria-pressed={selectable ? selected : undefined}
     >
       <div className="flex items-center justify-between gap-2">
         <p className="font-mono text-xs uppercase tracking-wide text-cyan-300">{event.type}</p>
         {event.salience !== undefined ? <SalienceBadge salience={event.salience} /> : null}
       </div>
+
+      {pinnedFromGraph ? (
+        <p className="text-[10px] uppercase tracking-wider text-cyan-200/90">Selected from graph</p>
+      ) : null}
 
       <div>
         <p className="text-sm font-medium text-zinc-100">{event.title}</p>
