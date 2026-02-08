@@ -21,6 +21,25 @@ export interface UseTheatricalSchedulerOptions<TEvent extends ScheduledEvent = S
   intervalOverrides?: Record<string, number>;
 }
 
+interface SchedulerSnapshot {
+  isReplaying: boolean;
+  remaining: number;
+}
+
+interface RuntimeSchedulerOptions<TEvent extends ScheduledEvent = ScheduledEvent>
+  extends UseTheatricalSchedulerOptions<TEvent> {
+  onStateChange?: (snapshot: SchedulerSnapshot) => void;
+}
+
+export interface TheatricalSchedulerController<TEvent extends ScheduledEvent = ScheduledEvent> {
+  enqueue: (events: TEvent[]) => void;
+  flush: () => void;
+  cancel: () => void;
+  dispose: () => void;
+  updateOptions: (nextOptions: RuntimeSchedulerOptions<TEvent>) => void;
+  getSnapshot: () => SchedulerSnapshot;
+}
+
 export const DEFAULT_THEATRICAL_INTERVAL_MS = 450;
 
 export const DEFAULT_THEATRICAL_INTERVAL_OVERRIDES: Record<string, number> = {
@@ -37,12 +56,6 @@ export const DEFAULT_THEATRICAL_INTERVAL_OVERRIDES: Record<string, number> = {
 const STREAM_TEXT_CHUNK_SIZE = 40;
 const STREAM_TEXT_INTERVAL_MS = 35;
 
-interface InternalState<TEvent extends ScheduledEvent> {
-  active: boolean;
-  queue: TEvent[];
-  activeStreamEvent: TEvent | null;
-}
-
 function coerceInterval(value: number | undefined, fallback: number) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
@@ -51,124 +64,119 @@ function coerceInterval(value: number | undefined, fallback: number) {
   return Math.max(0, value);
 }
 
-export function useTheatricalScheduler<TEvent extends ScheduledEvent = ScheduledEvent>(
-  options: UseTheatricalSchedulerOptions<TEvent> = {},
-) {
-  const optionsRef = useRef<UseTheatricalSchedulerOptions<TEvent>>(options);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const streamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const streamCursorRef = useRef(0);
-  const stateRef = useRef<InternalState<TEvent>>({
-    active: false,
-    queue: [],
-    activeStreamEvent: null,
-  });
+export function createTheatricalSchedulerController<TEvent extends ScheduledEvent = ScheduledEvent>(
+  initialOptions: RuntimeSchedulerOptions<TEvent> = {},
+): TheatricalSchedulerController<TEvent> {
+  let options = initialOptions;
+  let queue: TEvent[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let streamTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingEvent: TEvent | null = null;
+  let activeStreamEvent: TEvent | null = null;
+  let streamCursor = 0;
+  let isReplaying = false;
+  let remaining = 0;
 
-  const [isReplaying, setIsReplaying] = useState(false);
-  const [remaining, setRemaining] = useState(0);
+  const notifyState = () => {
+    options.onStateChange?.({ isReplaying, remaining });
+  };
 
-  useEffect(() => {
-    optionsRef.current = options;
-  }, [options]);
-
-  const clearTimers = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
+  const clearTimers = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
     }
 
-    if (streamTimerRef.current) {
-      clearTimeout(streamTimerRef.current);
-      streamTimerRef.current = null;
+    if (streamTimer) {
+      clearTimeout(streamTimer);
+      streamTimer = null;
     }
-  }, []);
+  };
 
-  const finishReplay = useCallback(
-    (shouldComplete: boolean) => {
-      clearTimers();
-      stateRef.current.active = false;
-      stateRef.current.queue = [];
-      stateRef.current.activeStreamEvent = null;
-      streamCursorRef.current = 0;
-      setIsReplaying(false);
-      setRemaining(0);
+  const finishReplay = (shouldComplete: boolean) => {
+    clearTimers();
+    queue = [];
+    pendingEvent = null;
+    activeStreamEvent = null;
+    streamCursor = 0;
+    isReplaying = false;
+    remaining = 0;
+    notifyState();
 
-      if (shouldComplete) {
-        optionsRef.current.onComplete?.();
-      }
-    },
-    [clearTimers],
-  );
+    if (shouldComplete) {
+      options.onComplete?.();
+    }
+  };
 
-  const getEventDelay = useCallback((event: TEvent) => {
-    const intervalOverrides = optionsRef.current.intervalOverrides ?? DEFAULT_THEATRICAL_INTERVAL_OVERRIDES;
-    const defaultInterval = coerceInterval(optionsRef.current.defaultIntervalMs, DEFAULT_THEATRICAL_INTERVAL_MS);
+  const getEventDelay = (event: TEvent) => {
+    const intervalOverrides = options.intervalOverrides ?? DEFAULT_THEATRICAL_INTERVAL_OVERRIDES;
+    const defaultInterval = coerceInterval(options.defaultIntervalMs, DEFAULT_THEATRICAL_INTERVAL_MS);
     return coerceInterval(intervalOverrides[event.type], defaultInterval);
-  }, []);
+  };
 
-  const playStreamText = useCallback(
-    (event: TEvent, onDone: () => void) => {
-      const streamText = event.streamText ?? "";
-      stateRef.current.activeStreamEvent = event;
+  const playStreamText = (event: TEvent, onDone: () => void) => {
+    const streamText = event.streamText ?? "";
+    activeStreamEvent = event;
 
-      if (streamText.length === 0) {
-        optionsRef.current.onTextStreamComplete?.(event, "");
-        stateRef.current.activeStreamEvent = null;
-        streamCursorRef.current = 0;
+    if (streamText.length === 0) {
+      options.onTextStreamComplete?.(event, "");
+      activeStreamEvent = null;
+      streamCursor = 0;
+      onDone();
+      return;
+    }
+
+    streamCursor = 0;
+
+    const tick = () => {
+      if (!isReplaying || activeStreamEvent !== event) {
+        return;
+      }
+
+      const nextCursor = Math.min(streamText.length, streamCursor + STREAM_TEXT_CHUNK_SIZE);
+      streamCursor = nextCursor;
+
+      const accumulated = streamText.slice(0, nextCursor);
+      options.onTextStreamChunk?.(event, accumulated);
+
+      if (nextCursor >= streamText.length) {
+        streamTimer = null;
+        options.onTextStreamComplete?.(event, accumulated);
+        activeStreamEvent = null;
+        streamCursor = 0;
         onDone();
         return;
       }
 
-      streamCursorRef.current = 0;
+      streamTimer = setTimeout(tick, STREAM_TEXT_INTERVAL_MS);
+    };
 
-      const tick = () => {
-        if (!stateRef.current.active || stateRef.current.activeStreamEvent !== event) {
-          return;
-        }
+    tick();
+  };
 
-        const nextCursor = Math.min(streamText.length, streamCursorRef.current + STREAM_TEXT_CHUNK_SIZE);
-        streamCursorRef.current = nextCursor;
-
-        const accumulated = streamText.slice(0, nextCursor);
-        optionsRef.current.onTextStreamChunk?.(event, accumulated);
-
-        if (nextCursor >= streamText.length) {
-          streamTimerRef.current = null;
-          optionsRef.current.onTextStreamComplete?.(event, accumulated);
-          stateRef.current.activeStreamEvent = null;
-          streamCursorRef.current = 0;
-          onDone();
-          return;
-        }
-
-        streamTimerRef.current = setTimeout(tick, STREAM_TEXT_INTERVAL_MS);
-      };
-
-      tick();
-    },
-    [],
-  );
-
-  const releaseNext = useCallback(() => {
-    if (!stateRef.current.active) {
+  const releaseNext = () => {
+    if (!isReplaying) {
       return;
     }
 
-    const nextEvent = stateRef.current.queue.shift() ?? null;
+    const nextEvent = queue.shift() ?? null;
 
     if (!nextEvent) {
       finishReplay(true);
       return;
     }
 
-    setRemaining(stateRef.current.queue.length);
+    pendingEvent = nextEvent;
+    remaining = queue.length;
+    notifyState();
 
     const handleRelease = () => {
-      if (!stateRef.current.active) {
+      if (!isReplaying) {
         return;
       }
 
-      optionsRef.current.onEventRelease?.(nextEvent);
+      pendingEvent = null;
+      options.onEventRelease?.(nextEvent);
 
       if (typeof nextEvent.streamText === "string") {
         playStreamText(nextEvent, releaseNext);
@@ -178,82 +186,129 @@ export function useTheatricalScheduler<TEvent extends ScheduledEvent = Scheduled
       releaseNext();
     };
 
-    timerRef.current = setTimeout(handleRelease, getEventDelay(nextEvent));
-  }, [finishReplay, getEventDelay, playStreamText]);
+    timer = setTimeout(handleRelease, getEventDelay(nextEvent));
+  };
 
-  const cancel = useCallback(() => {
+  const cancel = () => {
     clearTimers();
-    stateRef.current.active = false;
-    stateRef.current.queue = [];
-    stateRef.current.activeStreamEvent = null;
-    streamCursorRef.current = 0;
-    setIsReplaying(false);
-    setRemaining(0);
-  }, [clearTimers]);
+    queue = [];
+    pendingEvent = null;
+    activeStreamEvent = null;
+    streamCursor = 0;
+    isReplaying = false;
+    remaining = 0;
+    notifyState();
+  };
 
-  const flush = useCallback(() => {
-    if (!stateRef.current.active) {
+  const flush = () => {
+    if (!isReplaying) {
       return;
     }
 
     clearTimers();
 
-    const activeStreamEvent = stateRef.current.activeStreamEvent;
     if (activeStreamEvent && typeof activeStreamEvent.streamText === "string") {
       const fullText = activeStreamEvent.streamText;
-      optionsRef.current.onTextStreamChunk?.(activeStreamEvent, fullText);
-      optionsRef.current.onTextStreamComplete?.(activeStreamEvent, fullText);
-      stateRef.current.activeStreamEvent = null;
-      streamCursorRef.current = 0;
+      options.onTextStreamChunk?.(activeStreamEvent, fullText);
+      options.onTextStreamComplete?.(activeStreamEvent, fullText);
+      activeStreamEvent = null;
+      streamCursor = 0;
     }
 
-    while (stateRef.current.queue.length > 0) {
-      const event = stateRef.current.queue.shift()!;
-      optionsRef.current.onEventRelease?.(event);
+    if (pendingEvent) {
+      const event = pendingEvent;
+      pendingEvent = null;
+      options.onEventRelease?.(event);
       if (typeof event.streamText === "string") {
-        optionsRef.current.onTextStreamChunk?.(event, event.streamText);
-        optionsRef.current.onTextStreamComplete?.(event, event.streamText);
+        options.onTextStreamChunk?.(event, event.streamText);
+        options.onTextStreamComplete?.(event, event.streamText);
+      }
+    }
+
+    while (queue.length > 0) {
+      const event = queue.shift()!;
+      options.onEventRelease?.(event);
+      if (typeof event.streamText === "string") {
+        options.onTextStreamChunk?.(event, event.streamText);
+        options.onTextStreamComplete?.(event, event.streamText);
       }
     }
 
     finishReplay(true);
-  }, [clearTimers, finishReplay]);
+  };
 
-  const enqueue = useCallback(
-    (events: TEvent[]) => {
-      cancel();
+  const enqueue = (events: TEvent[]) => {
+    cancel();
 
-      if (!Array.isArray(events) || events.length === 0) {
-        return;
-      }
+    if (!Array.isArray(events) || events.length === 0) {
+      return;
+    }
 
-      stateRef.current.active = true;
-      stateRef.current.queue = [...events];
-      setIsReplaying(true);
-      setRemaining(events.length);
-      releaseNext();
+    queue = [...events];
+    isReplaying = true;
+    remaining = events.length;
+    notifyState();
+    releaseNext();
+  };
+
+  return {
+    enqueue,
+    flush,
+    cancel,
+    dispose: cancel,
+    updateOptions: (nextOptions: RuntimeSchedulerOptions<TEvent>) => {
+      options = nextOptions;
     },
-    [cancel, releaseNext],
-  );
+    getSnapshot: () => ({ isReplaying, remaining }),
+  };
+}
+
+export function useTheatricalScheduler<TEvent extends ScheduledEvent = ScheduledEvent>(
+  options: UseTheatricalSchedulerOptions<TEvent> = {},
+) {
+  const [snapshot, setSnapshot] = useState<SchedulerSnapshot>({ isReplaying: false, remaining: 0 });
+  const controllerRef = useRef<TheatricalSchedulerController<TEvent> | null>(null);
+
+  if (!controllerRef.current) {
+    controllerRef.current = createTheatricalSchedulerController<TEvent>({
+      ...options,
+      onStateChange: setSnapshot,
+    });
+  }
+
+  useEffect(() => {
+    controllerRef.current?.updateOptions({
+      ...options,
+      onStateChange: setSnapshot,
+    });
+  }, [options]);
 
   useEffect(() => {
     return () => {
-      clearTimers();
-      stateRef.current.active = false;
-      stateRef.current.queue = [];
-      stateRef.current.activeStreamEvent = null;
-      streamCursorRef.current = 0;
+      controllerRef.current?.dispose();
     };
-  }, [clearTimers]);
+  }, []);
+
+  const enqueue = useCallback((events: TEvent[]) => {
+    controllerRef.current?.enqueue(events);
+  }, []);
+
+  const flush = useCallback(() => {
+    controllerRef.current?.flush();
+  }, []);
+
+  const cancel = useCallback(() => {
+    controllerRef.current?.cancel();
+  }, []);
 
   return useMemo(
     () => ({
       enqueue,
-      isReplaying,
-      remaining,
+      isReplaying: snapshot.isReplaying,
+      remaining: snapshot.remaining,
       flush,
       cancel,
     }),
-    [cancel, enqueue, flush, isReplaying, remaining],
+    [cancel, enqueue, flush, snapshot.isReplaying, snapshot.remaining],
   );
 }
