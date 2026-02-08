@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 const primaryItems = [
@@ -8,6 +9,17 @@ const primaryItems = [
 export function Sidebar() {
   return (
     <aside className="w-full border-r border-zinc-800 bg-zinc-950/40 p-4 md:w-64">
+      <div className="mb-4 flex items-center gap-2 border-b border-zinc-800 px-3 pb-3">
+        <Image
+          src="/hippocampus-logo.png"
+          alt="Hippocampus"
+          width={24}
+          height={24}
+          className="h-6 w-6 rounded-full"
+        />
+        <p className="text-sm font-medium tracking-wide text-zinc-200">Hippocampus</p>
+      </div>
+
       <nav className="space-y-2" aria-label="Primary">
         {primaryItems.map((item) => (
           <Link

@@ -11,9 +11,18 @@ interface HeaderProps {
 export function Header({ githubUsername, avatarUrl }: HeaderProps) {
   return (
     <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/70 px-6 py-4 backdrop-blur">
-      <div className="space-y-1">
-        <p className="text-sm text-zinc-400">Team Memory</p>
-        <h1 className="text-xl font-semibold text-zinc-100">Hippocampus</h1>
+      <div className="flex items-center gap-3">
+        <Image
+          src="/hippocampus-logo.png"
+          alt="Hippocampus"
+          width={32}
+          height={32}
+          className="h-8 w-8 rounded-full"
+        />
+        <div className="space-y-1">
+          <p className="text-sm text-zinc-400">Team Memory</p>
+          <h1 className="text-xl font-semibold text-zinc-100">Hippocampus</h1>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
