@@ -1,4 +1,5 @@
 import type { GitHubPR, GitHubReview } from "@/lib/github/types";
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 export interface EpisodeNarrativeFields {
   what_happened: string;
@@ -22,6 +23,7 @@ export interface EpisodeInsertPayload {
   title: string;
   who: string | null;
   what_happened: string;
+  pattern_key: PatternKey;
   the_pattern: string;
   the_fix: string;
   why_it_matters: string;
@@ -42,6 +44,7 @@ export interface ConsolidationEpisodeInput {
   id: string;
   title: string;
   what_happened: string | null;
+  pattern_key: PatternKey;
   the_pattern: string | null;
   the_fix: string | null;
   why_it_matters: string | null;
@@ -53,6 +56,7 @@ export interface ConsolidationEpisodeInput {
 
 export interface ConsolidationRuleInput {
   id: string;
+  rule_key: PatternKey;
   title: string;
   description: string;
   triggers: string[];
@@ -67,6 +71,7 @@ export interface ConsolidationPattern {
 }
 
 export interface ConsolidationRuleCandidate {
+  rule_key: PatternKey;
   title: string;
   description: string;
   triggers: string[];
