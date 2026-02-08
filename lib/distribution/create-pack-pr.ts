@@ -138,11 +138,18 @@ export async function createPackPR(input: CreatePackPRInput): Promise<CreatePack
       head: branch,
     });
 
+    const commitSha = commitResponse.data.commit.sha;
+    const prUrl = pullResponse.data.html_url;
+
+    if (!commitSha || !prUrl) {
+      throw new Error("GitHub API response missing commit SHA or PR URL");
+    }
+
     return {
       prNumber: pullResponse.data.number,
-      prUrl: pullResponse.data.html_url,
+      prUrl,
       branch,
-      sha: commitResponse.data.commit.sha,
+      sha: commitSha,
     };
   } catch (error) {
     throw parseGitHubError(error);
