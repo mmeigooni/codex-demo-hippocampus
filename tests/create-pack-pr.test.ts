@@ -45,7 +45,15 @@ describe("createPackPR", () => {
       markdownContent: "# Team Memory Pack - acme/demo\n\n### Retry rules",
     };
 
-    const result = await createPackPR(input);
+    const onBranchCreated = vi.fn();
+    const onFileCommitted = vi.fn();
+    const onPRCreating = vi.fn();
+
+    const result = await createPackPR(input, {
+      onBranchCreated,
+      onFileCommitted,
+      onPRCreating,
+    });
 
     const typedResult: CreatePackPRResult = result;
 
@@ -53,6 +61,9 @@ describe("createPackPR", () => {
     expect(typedResult.prUrl).toBe("https://github.com/acme/demo/pull/42");
     expect(typedResult.sha).toBe("commit-sha");
     expect(typedResult.branch).toMatch(/^hippocampus\/team-memory-\d+$/);
+    expect(onBranchCreated).toHaveBeenCalledWith(expect.stringMatching(/^hippocampus\/team-memory-\d+$/));
+    expect(onFileCommitted).toHaveBeenCalledWith("commit-sha");
+    expect(onPRCreating).toHaveBeenCalledTimes(1);
 
     expect(vi.mocked(requestMock)).toHaveBeenCalledWith("GET /repos/{owner}/{repo}/git/ref/heads/{ref}", {
       owner: "acme",
