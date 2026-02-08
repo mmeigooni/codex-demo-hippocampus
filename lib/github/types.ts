@@ -59,7 +59,23 @@ export type ImportEventType =
   | "encoding_error"
   | "complete";
 
+export interface ImportEpisodeSummary {
+  id: string;
+  title: string;
+  source_pr_number: number;
+  salience_score: number;
+  pattern_key: PatternKey;
+  the_pattern: string;
+  triggers: string[];
+}
+
+export interface ImportCompleteData {
+  total: number;
+  failed: number;
+}
+
 export interface ImportEvent<T = Record<string, unknown>> {
   type: ImportEventType;
   data: T;
 }
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { createCodexThread, runWithSchema } from "@/lib/codex/client";
+import { mapToPatternKey, patternLabelForKey } from "@/lib/memory/pattern-taxonomy";
 import type {
   EncodedEpisodeResult,
   EpisodeEncodingInput,
@@ -68,20 +69,13 @@ function flattenReviews(input: EpisodeEncodingInput) {
     .join("\n\n");
 }
 
-function fallbackNarrative(input: EpisodeEncodingInput): EpisodeNarrativeFields {
-  const topTrigger = input.reviews
-    .flatMap((review) => review.comments.map((comment) => comment.path))
-    .filter(Boolean)
-    .slice(0, 3);
+export class EpisodeEncodingError extends Error {
+  code = "ENCODING_MODEL_FAILURE";
 
-  return {
-    what_happened: `PR #${input.pr.number} introduced or discussed review concerns in ${input.owner}/${input.repo}.`,
-    the_pattern: "reviewed-code-pattern",
-    the_fix: "Apply reviewer guidance and enforce defensive implementation patterns.",
-    why_it_matters: "Capturing review incidents turns one-off feedback into reusable team memory.",
-    salience_score: 5,
-    triggers: topTrigger.length > 0 ? topTrigger : ["reviewed", "incident"],
-  };
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "EpisodeEncodingError";
+  }
 }
 
 export async function encodeEpisode(input: EpisodeEncodingInput): Promise<EncodedEpisodeResult> {
@@ -110,16 +104,25 @@ export async function encodeEpisode(input: EpisodeEncodingInput): Promise<Encode
   ].join("\n");
 
   let narrative: EpisodeNarrativeFields;
-
   try {
     const thread = createCodexThread("mini");
     narrative = await runWithSchema<EpisodeNarrativeFields>(thread, prompt, ENCODE_EPISODE_SCHEMA);
-  } catch {
-    narrative = fallbackNarrative(input);
+  } catch (error) {
+    throw new EpisodeEncodingError("Failed to encode episode with Codex", { cause: error });
   }
+
+  const patternKey = mapToPatternKey({
+    title: input.pr.title,
+    pattern: narrative.the_pattern,
+    whatHappened: narrative.what_happened,
+    fix: narrative.the_fix,
+    triggers: narrative.triggers,
+  });
+  const canonicalPatternLabel = patternLabelForKey(patternKey);
 
   narrative = {
     ...narrative,
+    the_pattern: canonicalPatternLabel,
     salience_score: clampSalience(narrative.salience_score),
     triggers: sanitizeTriggers(narrative.triggers),
   };
@@ -130,6 +133,7 @@ export async function encodeEpisode(input: EpisodeEncodingInput): Promise<Encode
       title: input.pr.title,
       who: input.pr.authorLogin,
       what_happened: narrative.what_happened,
+      pattern_key: patternKey,
       the_pattern: narrative.the_pattern,
       the_fix: narrative.the_fix,
       why_it_matters: narrative.why_it_matters,

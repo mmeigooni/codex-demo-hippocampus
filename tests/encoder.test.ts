@@ -10,7 +10,7 @@ vi.mock("@/lib/codex/client", () => ({
 }));
 
 import { runWithSchema } from "@/lib/codex/client";
-import { encodeEpisode } from "@/lib/codex/encoder";
+import { encodeEpisode, EpisodeEncodingError } from "@/lib/codex/encoder";
 import type { EpisodeEncodingInput } from "@/lib/codex/types";
 
 const input: EpisodeEncodingInput = {
@@ -76,17 +76,15 @@ describe("encodeEpisode", () => {
 
     expect(result.episode.salience_score).toBe(10);
     expect(result.episode.triggers).toEqual(["retry", "payments"]);
+    expect(result.episode.pattern_key).toBe("retry-strategy");
+    expect(result.episode.the_pattern).toBe("Retry strategy");
     expect(result.reviewCount).toBe(1);
     expect(result.snippetCount).toBe(1);
   });
 
-  it("uses deterministic fallback when codex run fails", async () => {
+  it("throws a typed error when codex run fails", async () => {
     vi.mocked(runWithSchema).mockRejectedValueOnce(new Error("codex timeout"));
 
-    const result = await encodeEpisode(input);
-
-    expect(result.narrative.the_pattern).toBe("reviewed-code-pattern");
-    expect(result.episode.title).toBe("Fix retries");
-    expect(result.episode.source_pr_number).toBe(42);
+    await expect(encodeEpisode(input)).rejects.toBeInstanceOf(EpisodeEncodingError);
   });
 });
