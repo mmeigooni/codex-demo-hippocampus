@@ -14,10 +14,12 @@ import type {
 interface BrainGraphProps {
   nodes: BrainNodeModel[];
   edges: BrainEdgeModel[];
+  layoutNodes?: BrainNodeModel[];
+  layoutEdges?: BrainEdgeModel[];
   onSelectedNodeChange?: (node: PositionedBrainNode | null) => void;
 }
 
-function layoutNodes(nodes: BrainNodeModel[], edges: BrainEdgeModel[]) {
+function computeLayoutNodes(nodes: BrainNodeModel[], edges: BrainEdgeModel[]) {
   const positions = new Map<string, [number, number, number]>();
   const vectors = new Map<string, { x: number; y: number; z: number }>();
   const attachedEdgesByNode = new Map<string, BrainEdgeModel[]>();
@@ -103,11 +105,19 @@ function layoutNodes(nodes: BrainNodeModel[], edges: BrainEdgeModel[]) {
   return positions;
 }
 
-export function BrainGraph({ nodes, edges, onSelectedNodeChange }: BrainGraphProps) {
+export function BrainGraph({
+  nodes,
+  edges,
+  layoutNodes,
+  layoutEdges,
+  onSelectedNodeChange,
+}: BrainGraphProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const nodesForLayout = layoutNodes ?? nodes;
+  const edgesForLayout = layoutEdges ?? edges;
 
-  const positions = useMemo(() => layoutNodes(nodes, edges), [nodes, edges]);
+  const positions = useMemo(() => computeLayoutNodes(nodesForLayout, edgesForLayout), [edgesForLayout, nodesForLayout]);
   const positionedNodes = useMemo(
     () =>
       nodes.map((node) => ({
