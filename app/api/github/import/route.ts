@@ -16,6 +16,11 @@ import {
   MISSING_PROVIDER_TOKEN_MESSAGE,
   PRIVATE_REPOS_NOT_SUPPORTED_MESSAGE,
 } from "@/lib/github/public-only-policy";
+import {
+  assertProfilesSchemaReady,
+  isProfilesSchemaNotReadyError,
+  SCHEMA_NOT_READY_PROFILES_CODE,
+} from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
 
 function buildSseMessage(event: ImportEvent) {
@@ -114,6 +119,23 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to verify repository visibility";
     return Response.json({ error: message }, { status: 400 });
+  }
+
+  try {
+    await assertProfilesSchemaReady(supabase);
+  } catch (error) {
+    if (isProfilesSchemaNotReadyError(error)) {
+      return Response.json(
+        {
+          error: error.message,
+          code: SCHEMA_NOT_READY_PROFILES_CODE,
+        },
+        { status: 503 },
+      );
+    }
+
+    const message = error instanceof Error ? error.message : "Unexpected schema preflight error";
+    return Response.json({ error: message }, { status: 500 });
   }
 
   const encoder = new TextEncoder();

@@ -4,6 +4,11 @@ import type {
   ConsolidationEvent,
   ConsolidationRuleInput,
 } from "@/lib/codex/types";
+import {
+  assertProfilesSchemaReady,
+  isProfilesSchemaNotReadyError,
+  SCHEMA_NOT_READY_PROFILES_CODE,
+} from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
 
 interface ConsolidateRequest {
@@ -98,6 +103,23 @@ export async function POST(request: Request) {
     githubUsername: user.user_metadata?.user_name ?? user.user_metadata?.preferred_username ?? null,
     avatarUrl: user.user_metadata?.avatar_url ?? null,
   };
+
+  try {
+    await assertProfilesSchemaReady(supabase);
+  } catch (error) {
+    if (isProfilesSchemaNotReadyError(error)) {
+      return Response.json(
+        {
+          error: error.message,
+          code: SCHEMA_NOT_READY_PROFILES_CODE,
+        },
+        { status: 503 },
+      );
+    }
+
+    const message = error instanceof Error ? error.message : "Unexpected schema preflight error";
+    return Response.json({ error: message }, { status: 500 });
+  }
 
   const encoder = new TextEncoder();
 
