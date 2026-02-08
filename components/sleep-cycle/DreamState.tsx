@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 export type DreamPhase =
   | "idle"
   | "dozing"
+  | "reasoning"
   | "patterning"
   | "promoting"
   | "integrating"
@@ -22,6 +23,7 @@ interface DreamStateProps {
 const PHASE_LABELS: Record<DreamPhase, string> = {
   idle: "Idle",
   dozing: "Dozing",
+  reasoning: "Reasoning",
   patterning: "Detecting Patterns",
   promoting: "Promoting Rules",
   integrating: "Integrating Memory",
@@ -32,6 +34,7 @@ const PHASE_LABELS: Record<DreamPhase, string> = {
 const PHASE_ORDER: DreamPhase[] = [
   "idle",
   "dozing",
+  "reasoning",
   "patterning",
   "promoting",
   "integrating",
