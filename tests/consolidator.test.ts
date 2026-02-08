@@ -7,9 +7,10 @@ vi.mock("node:fs/promises", () => ({
 vi.mock("@/lib/codex/client", () => ({
   createCodexThread: vi.fn(() => ({})),
   runWithSchema: vi.fn(),
+  runStreamedWithSchema: vi.fn(),
 }));
 
-import { runWithSchema } from "@/lib/codex/client";
+import { runStreamedWithSchema, runWithSchema } from "@/lib/codex/client";
 import { consolidateEpisodes, sanitizeConsolidationOutput } from "@/lib/codex/consolidator";
 import type { ConsolidationEpisodeInput } from "@/lib/codex/types";
 
@@ -119,6 +120,7 @@ describe("sanitizeConsolidationOutput", () => {
 describe("consolidateEpisodes", () => {
   beforeEach(() => {
     vi.mocked(runWithSchema).mockReset();
+    vi.mocked(runStreamedWithSchema).mockReset();
   });
 
   it("throws when codex run fails", async () => {
@@ -131,5 +133,62 @@ describe("consolidateEpisodes", () => {
         existingRules: [],
       }),
     ).rejects.toThrow("codex unavailable");
+  });
+
+  it("uses streamed schema run when stream callbacks are provided", async () => {
+    const rawOutput = {
+      patterns: [{ name: "retry", summary: "retry pattern", episode_ids: ["ep-1", "ep-2"] }],
+      rules_to_promote: [
+        {
+          title: "Guard retries",
+          description: "Bound retries",
+          triggers: ["retry", "limits"],
+          source_episode_ids: ["ep-1", "ep-2"],
+        },
+      ],
+      contradictions: [],
+      salience_updates: [{ episode_id: "ep-1", salience_score: 9, reason: "frequent" }],
+      prune_candidates: [],
+    };
+
+    vi.mocked(runStreamedWithSchema).mockImplementationOnce(async (_thread, _prompt, _schema, callbacks) => {
+      callbacks?.onReasoningStart?.("reasoning-id", "start");
+      callbacks?.onReasoningDelta?.("reasoning-id", "start + delta");
+      callbacks?.onReasoningComplete?.("reasoning-id", "done");
+      callbacks?.onResponseStart?.("response-id", "{");
+      callbacks?.onResponseDelta?.("response-id", '{"patterns":');
+      return rawOutput;
+    });
+
+    const onReasoningStart = vi.fn();
+    const onReasoningDelta = vi.fn();
+    const onReasoningComplete = vi.fn();
+    const onResponseStart = vi.fn();
+    const onResponseDelta = vi.fn();
+
+    const result = await consolidateEpisodes(
+      {
+        repoFullName: "acme/repo",
+        episodes,
+        existingRules: [],
+      },
+      {
+        onReasoningStart,
+        onReasoningDelta,
+        onReasoningComplete,
+        onResponseStart,
+        onResponseDelta,
+      },
+    );
+
+    expect(runStreamedWithSchema).toHaveBeenCalledTimes(1);
+    expect(runWithSchema).not.toHaveBeenCalled();
+    expect(onReasoningStart).toHaveBeenCalledWith("start");
+    expect(onReasoningDelta).toHaveBeenCalledWith("start + delta");
+    expect(onReasoningComplete).toHaveBeenCalledWith("done");
+    expect(onResponseStart).toHaveBeenCalledWith("{");
+    expect(onResponseDelta).toHaveBeenCalledWith('{"patterns":');
+    expect(result.used_fallback).toBe(false);
+    expect(result.patterns).toHaveLength(1);
   });
 });
