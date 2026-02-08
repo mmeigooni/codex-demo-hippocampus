@@ -2,6 +2,7 @@ import { consolidateEpisodes } from "@/lib/codex/consolidator";
 import type {
   ConsolidationEpisodeInput,
   ConsolidationEvent,
+  ConsolidationRuleCandidate,
   ConsolidationRuleInput,
 } from "@/lib/codex/types";
 import {
@@ -13,6 +14,7 @@ import {
   listEpisodesForRepo,
   listReposForUser,
   listRulesForRepo,
+  latestCompletedRunForRepo,
   upsertRulesForRepo,
 } from "@/lib/fallback/runtime-memory-store";
 import {
@@ -135,6 +137,130 @@ function computeConfidence(
   return Number((total / (sourceEpisodeIds.length * 10)).toFixed(2));
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isReplaySummaryPack(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return false;
+  }
+
+  return (
+    Array.isArray(value.patterns) &&
+    Array.isArray(value.rules_to_promote) &&
+    Array.isArray(value.contradictions) &&
+    Array.isArray(value.salience_updates) &&
+    Array.isArray(value.prune_candidates)
+  );
+}
+
+function extractReplaySummary(summary: unknown) {
+  if (!isObjectRecord(summary)) {
+    return null;
+  }
+
+  if (!isReplaySummaryPack(summary.pack)) {
+    return null;
+  }
+
+  return {
+    summary,
+    pack: summary.pack as {
+      patterns: Array<Record<string, unknown>>;
+      rules_to_promote: Array<Record<string, unknown>>;
+      contradictions: Array<Record<string, unknown>>;
+      salience_updates: Array<Record<string, unknown>>;
+    },
+    reasoningText: typeof summary.reasoning_text === "string" ? summary.reasoning_text : "",
+  };
+}
+
+function emitConsolidationReplay({
+  emit,
+  runId,
+  repoId,
+  repoFullName,
+  episodeCount,
+  existingRuleCount,
+  replaySummary,
+}: {
+  emit: Emit;
+  runId: string;
+  repoId: string;
+  repoFullName: string;
+  episodeCount: number;
+  existingRuleCount: number;
+  replaySummary: ReturnType<typeof extractReplaySummary>;
+}) {
+  if (!replaySummary) {
+    return false;
+  }
+
+  emit({
+    type: "replay_manifest",
+    data: {
+      mode: "consolidation_replay",
+      run_id: runId,
+      has_reasoning: replaySummary.reasoningText.length > 0,
+    },
+  });
+
+  emit({
+    type: "consolidation_start",
+    data: {
+      run_id: runId,
+      repo_id: repoId,
+      repo_full_name: repoFullName,
+      episode_count: episodeCount,
+      existing_rule_count: existingRuleCount,
+    },
+  });
+
+  if (replaySummary.reasoningText.length > 0) {
+    emit({ type: "reasoning_start", data: { run_id: runId } });
+    emit({
+      type: "reasoning_complete",
+      data: {
+        run_id: runId,
+        text: replaySummary.reasoningText,
+      },
+    });
+  }
+
+  for (const pattern of replaySummary.pack.patterns) {
+    emit({ type: "pattern_detected", data: pattern });
+  }
+
+  for (const rule of replaySummary.pack.rules_to_promote) {
+    emit({
+      type: "rule_promoted",
+      data: {
+        ...rule,
+        confidence: Number(rule.confidence ?? 0),
+      },
+    });
+  }
+
+  for (const contradiction of replaySummary.pack.contradictions) {
+    emit({ type: "contradiction_found", data: contradiction });
+  }
+
+  for (const update of replaySummary.pack.salience_updates) {
+    emit({ type: "salience_updated", data: update });
+  }
+
+  emit({
+    type: "consolidation_complete",
+    data: {
+      run_id: runId,
+      summary: replaySummary.summary,
+    },
+  });
+
+  return true;
+}
+
 async function ensureProfileId(
   user: ProfileUserContext,
   supabase: Awaited<ReturnType<typeof createServerClient>>,
@@ -182,6 +308,7 @@ async function runSupabaseConsolidation({
   userContext: ProfileUserContext;
 }) {
   let runId: string | null = null;
+  let capturedReasoningText = "";
   const throttledReasoningEmit = createThrottledReasoningEmit(emit);
 
   try {
@@ -209,6 +336,54 @@ async function runSupabaseConsolidation({
 
     if (!selectedRepo?.id) {
       throw new Error("No connected repository found for consolidation");
+    }
+
+    const { data: existingRun, error: existingRunError } = await supabase
+      .from("consolidation_runs")
+      .select("id, summary")
+      .eq("repo_id", selectedRepo.id)
+      .eq("status", "completed")
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingRunError) {
+      throw new Error(existingRunError.message);
+    }
+
+    const replaySummary = extractReplaySummary(existingRun?.summary);
+
+    if (existingRun?.id && replaySummary) {
+      const [episodeCountResponse, ruleCountResponse] = await Promise.all([
+        supabase.from("episodes").select("id", { count: "exact", head: true }).eq("repo_id", selectedRepo.id),
+        supabase.from("rules").select("id", { count: "exact", head: true }).eq("repo_id", selectedRepo.id),
+      ]);
+
+      if (episodeCountResponse.error) {
+        throw new Error(episodeCountResponse.error.message);
+      }
+
+      if (ruleCountResponse.error) {
+        throw new Error(ruleCountResponse.error.message);
+      }
+
+      const replayed = emitConsolidationReplay({
+        emit,
+        runId: existingRun.id,
+        repoId: selectedRepo.id,
+        repoFullName: selectedRepo.full_name,
+        episodeCount: Number(episodeCountResponse.count ?? 0),
+        existingRuleCount: Number(ruleCountResponse.count ?? 0),
+        replaySummary,
+      });
+
+      if (replayed) {
+        return;
+      }
+    }
+
+    if (existingRun?.id && existingRun.summary) {
+      console.warn("[consolidation] replay cache incomplete; falling back to live consolidation path");
     }
 
     const [episodesResponse, rulesResponse, runResponse] = await Promise.all([
@@ -307,6 +482,7 @@ async function runSupabaseConsolidation({
           if (!runId) {
             return;
           }
+          capturedReasoningText = text;
           throttledReasoningEmit.flush(runId);
           emit({ type: "reasoning_complete", data: { run_id: runId, text } });
         },
@@ -326,6 +502,7 @@ async function runSupabaseConsolidation({
       emit({ type: "pattern_detected", data: pattern });
     }
 
+    const promotedRulesForSummary: Array<ConsolidationRuleCandidate & { confidence: number }> = [];
     const episodeMap = new Map(episodes.map((episode) => [episode.id, episode]));
 
     for (const rule of result.rules_to_promote) {
@@ -338,6 +515,7 @@ async function runSupabaseConsolidation({
         source_episode_ids: rule.source_episode_ids,
         confidence,
       };
+      promotedRulesForSummary.push(payload);
 
       const { error: upsertRuleError } = await supabase
         .from("rules")
@@ -380,14 +558,15 @@ async function runSupabaseConsolidation({
       used_fallback: result.used_fallback,
       counts: {
         patterns: result.patterns.length,
-        rules_promoted: result.rules_to_promote.length,
+        rules_promoted: promotedRulesForSummary.length,
         contradictions: result.contradictions.length,
         salience_updates: result.salience_updates.length,
         prune_candidates: result.prune_candidates.length,
       },
+      reasoning_text: capturedReasoningText,
       pack: {
         patterns: result.patterns,
-        rules_to_promote: result.rules_to_promote,
+        rules_to_promote: promotedRulesForSummary,
         contradictions: result.contradictions,
         salience_updates: result.salience_updates,
         prune_candidates: result.prune_candidates,
@@ -453,6 +632,7 @@ async function runMemoryFallbackConsolidation({
   user: { id: string };
 }) {
   let runId: string | null = null;
+  let capturedReasoningText = "";
   const throttledReasoningEmit = createThrottledReasoningEmit(emit);
 
   try {
@@ -492,6 +672,29 @@ async function runMemoryFallbackConsolidation({
         confidence: Number(rule.confidence ?? 0),
       }));
 
+    const existingRun = latestCompletedRunForRepo(selectedRepo.id);
+    const replaySummary = extractReplaySummary(existingRun?.summary);
+
+    if (existingRun?.id && replaySummary) {
+      const replayed = emitConsolidationReplay({
+        emit,
+        runId: existingRun.id,
+        repoId: selectedRepo.id,
+        repoFullName: selectedRepo.full_name,
+        episodeCount: episodes.length,
+        existingRuleCount: existingRules.length,
+        replaySummary,
+      });
+
+      if (replayed) {
+        return;
+      }
+    }
+
+    if (existingRun?.id && existingRun.summary) {
+      console.warn("[consolidation] replay cache incomplete; falling back to live consolidation path");
+    }
+
     runId = createConsolidationRun(selectedRepo.id).id;
 
     emit({
@@ -530,6 +733,7 @@ async function runMemoryFallbackConsolidation({
           if (!runId) {
             return;
           }
+          capturedReasoningText = text;
           throttledReasoningEmit.flush(runId);
           emit({ type: "reasoning_complete", data: { run_id: runId, text } });
         },
@@ -549,27 +753,28 @@ async function runMemoryFallbackConsolidation({
       emit({ type: "pattern_detected", data: pattern });
     }
 
+    const promotedRulesForSummary: Array<ConsolidationRuleCandidate & { confidence: number }> = [];
     const episodeMap = new Map(episodes.map((episode) => [episode.id, episode]));
 
     for (const rule of result.rules_to_promote) {
       const confidence = computeConfidence(rule.source_episode_ids, episodeMap);
+      const promotedRule = {
+        rule_key: rule.rule_key,
+        title: rule.title,
+        description: rule.description,
+        triggers: rule.triggers,
+        source_episode_ids: rule.source_episode_ids,
+        confidence,
+      };
+      promotedRulesForSummary.push(promotedRule);
+
       upsertRulesForRepo(selectedRepo.id, [
-        {
-          rule_key: rule.rule_key,
-          title: rule.title,
-          description: rule.description,
-          triggers: rule.triggers,
-          source_episode_ids: rule.source_episode_ids,
-          confidence,
-        },
+        promotedRule,
       ]);
 
       emit({
         type: "rule_promoted",
-        data: {
-          ...rule,
-          confidence,
-        },
+        data: promotedRule,
       });
     }
 
@@ -595,14 +800,15 @@ async function runMemoryFallbackConsolidation({
       used_fallback: result.used_fallback,
       counts: {
         patterns: result.patterns.length,
-        rules_promoted: result.rules_to_promote.length,
+        rules_promoted: promotedRulesForSummary.length,
         contradictions: result.contradictions.length,
         salience_updates: result.salience_updates.length,
         prune_candidates: result.prune_candidates.length,
       },
+      reasoning_text: capturedReasoningText,
       pack: {
         patterns: result.patterns,
-        rules_to_promote: result.rules_to_promote,
+        rules_to_promote: promotedRulesForSummary,
         contradictions: result.contradictions,
         salience_updates: result.salience_updates,
         prune_candidates: result.prune_candidates,

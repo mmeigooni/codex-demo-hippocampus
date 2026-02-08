@@ -103,6 +103,7 @@ export interface ConsolidationResult extends ConsolidationModelOutput {
 }
 
 export type ConsolidationEventType =
+  | "replay_manifest"
   | "consolidation_start"
   | "reasoning_start"
   | "reasoning_delta"

@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import type { Mesh } from "three";
+
 interface EpisodeNodeProps {
   position: [number, number, number];
   salience: number;
@@ -9,15 +13,42 @@ interface EpisodeNodeProps {
 }
 
 export function EpisodeNode({ position, salience, selected, onHover, onClick }: EpisodeNodeProps) {
+  const meshRef = useRef<Mesh>(null);
+  const spawnProgressRef = useRef(0);
   const intensity = 0.35 + salience / 10;
+  const baseScale = selected ? 1.15 : 1;
+
+  useFrame((_, delta) => {
+    if (!meshRef.current) {
+      return;
+    }
+
+    if (spawnProgressRef.current >= 1) {
+      return;
+    }
+
+    spawnProgressRef.current = Math.min(1, spawnProgressRef.current + delta * 3.5);
+    const eased = 1 - Math.pow(1 - spawnProgressRef.current, 3);
+    meshRef.current.scale.setScalar(eased * baseScale);
+  });
+
+  useEffect(() => {
+    if (!meshRef.current) {
+      return;
+    }
+
+    if (spawnProgressRef.current >= 1) {
+      meshRef.current.scale.setScalar(baseScale);
+    }
+  }, [baseScale]);
 
   return (
     <mesh
+      ref={meshRef}
       position={position}
       onPointerOver={() => onHover(true)}
       onPointerOut={() => onHover(false)}
       onClick={onClick}
-      scale={selected ? 1.15 : 1}
     >
       <sphereGeometry args={[0.3 + salience * 0.015, 24, 24]} />
       <meshStandardMaterial

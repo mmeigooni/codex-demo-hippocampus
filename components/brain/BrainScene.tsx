@@ -14,9 +14,11 @@ import type { BrainEdgeModel, BrainNodeModel, PositionedBrainNode } from "@/comp
 interface BrainSceneProps {
   nodes: BrainNodeModel[];
   edges: BrainEdgeModel[];
+  layoutNodes?: BrainNodeModel[];
+  layoutEdges?: BrainEdgeModel[];
 }
 
-export function BrainScene({ nodes, edges }: BrainSceneProps) {
+export function BrainScene({ nodes, edges, layoutNodes, layoutEdges }: BrainSceneProps) {
   const [selectedNode, setSelectedNode] = useState<PositionedBrainNode | null>(null);
 
   const hasGraphData = useMemo(() => nodes.length > 0, [nodes.length]);
@@ -32,7 +34,13 @@ export function BrainScene({ nodes, edges }: BrainSceneProps) {
             <pointLight position={[-8, -5, -5]} intensity={0.45} color="#fde68a" />
 
             <ParticleField />
-            <BrainGraph nodes={nodes} edges={edges} onSelectedNodeChange={setSelectedNode} />
+            <BrainGraph
+              nodes={nodes}
+              edges={edges}
+              layoutNodes={layoutNodes}
+              layoutEdges={layoutEdges}
+              onSelectedNodeChange={setSelectedNode}
+            />
 
             <OrbitControls
               enablePan={false}
