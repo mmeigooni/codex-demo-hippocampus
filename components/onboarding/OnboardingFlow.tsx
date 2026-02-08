@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 
-import { BrainScene } from "@/components/brain/BrainScene";
 import type { BrainEdgeModel, BrainNodeModel } from "@/components/brain/types";
 import { NeuralActivityFeed } from "@/components/feed/NeuralActivityFeed";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
@@ -20,6 +20,18 @@ interface ParsedImportEvent {
   type: string;
   data: Record<string, unknown>;
 }
+
+const BrainScene = dynamic(
+  () => import("@/components/brain/BrainScene").then((module) => module.BrainScene),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
+        Loading memory graph...
+      </div>
+    ),
+  },
+);
 
 const PHASE_ORDER: Record<ImportPhase, number> = {
   idle: 0,
@@ -249,19 +261,16 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         buffer = parsed.remainder;
 
         if (parsed.events.length > 0) {
-          setEvents((current) => {
-            const next = [...current, ...(parsed.events as ImportEvent[])];
+          const chunkEvents = parsed.events as ImportEvent[];
+          setEvents((current) => [...current, ...chunkEvents]);
 
-            const latest = next[next.length - 1];
-            if (latest?.type === "encoding_error") {
-              setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "error"));
-            }
-            if (latest?.type === "complete") {
-              setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
-            }
+          if (chunkEvents.some((event) => event.type === "encoding_error")) {
+            setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "error"));
+          }
 
-            return next;
-          });
+          if (chunkEvents.some((event) => event.type === "complete")) {
+            setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
+          }
         }
       }
 

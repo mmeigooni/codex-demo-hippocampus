@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { LogoutButton } from "@/components/layout/LogoutButton";
 import { Badge } from "@/components/ui/badge";
 
@@ -19,10 +21,11 @@ export function Header({ githubUsername, avatarUrl }: HeaderProps) {
           {githubUsername ?? "Authenticated"}
         </Badge>
         {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={avatarUrl}
             alt="GitHub avatar"
+            width={36}
+            height={36}
             className="h-9 w-9 rounded-full border border-zinc-700 object-cover"
           />
         ) : (

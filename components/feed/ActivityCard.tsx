@@ -28,7 +28,7 @@ export function ActivityCard({ event, index }: ActivityCardProps) {
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.26, delay: index * 0.04 }}
-      className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/70 p-3"
+      className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 [contain-intrinsic-size:220px] [content-visibility:auto]"
     >
       <div className="flex items-center justify-between gap-2">
         <p className="font-mono text-xs uppercase tracking-wide text-cyan-300">{event.type}</p>
