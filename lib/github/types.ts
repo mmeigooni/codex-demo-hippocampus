@@ -56,6 +56,7 @@ export interface ImportRepoRequest {
 
 export type ImportEventType =
   | "pr_found"
+  | "replay_manifest"
   | "encoding_start"
   | "episode_created"
   | "episode_skipped"
@@ -77,6 +78,7 @@ export interface ImportCompleteData {
   failed: number;
   skipped: number;
   repo_id?: string;
+  replayed?: boolean;
 }
 
 export interface ImportEvent<T = Record<string, unknown>> {
