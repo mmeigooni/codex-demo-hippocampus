@@ -20,7 +20,6 @@ export function LoginWithGitHubButton() {
       const { error: signInError } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          scopes: "repo",
           redirectTo: callbackUrl,
         },
       });
