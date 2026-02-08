@@ -203,6 +203,33 @@ async function runSupabaseDistribution({
         repo: selectedRepo.name,
         defaultBranch: remoteRepo.defaultBranch,
         markdownContent: markdown,
+      }, {
+        onBranchCreated: (branch) => {
+          emit({
+            type: "branch_created",
+            data: {
+              run_id: runId,
+              branch,
+            },
+          });
+        },
+        onFileCommitted: (sha) => {
+          emit({
+            type: "file_committed",
+            data: {
+              run_id: runId,
+              sha,
+            },
+          });
+        },
+        onPRCreating: () => {
+          emit({
+            type: "pr_creating",
+            data: {
+              run_id: runId,
+            },
+          });
+        },
       });
 
       emit({

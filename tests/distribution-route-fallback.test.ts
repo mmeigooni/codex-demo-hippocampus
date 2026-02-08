@@ -160,6 +160,58 @@ beforeEach(() => {
 });
 
 describe("POST /api/distribute fallback behavior", () => {
+  it("emits branch/file/pr-creating progress events before pr_created", async () => {
+    const { client } = createSupabaseMock({
+      latestRunSummary: { pack: EMPTY_PACK },
+    });
+
+    mockCreateServerClient.mockResolvedValue(client);
+    mockFetchRepo.mockResolvedValue({ defaultBranch: "main" });
+    mockCreatePackPR.mockImplementationOnce(async (_input: unknown, progress?: {
+      onBranchCreated?: (branch: string) => void;
+      onFileCommitted?: (sha: string) => void;
+      onPRCreating?: () => void;
+    }) => {
+      progress?.onBranchCreated?.("hippocampus/team-memory-123");
+      progress?.onFileCommitted?.("abc123");
+      progress?.onPRCreating?.();
+      return {
+        prNumber: 42,
+        prUrl: "https://github.com/mmeigooni/shopflow-platform/pull/42",
+        branch: "hippocampus/team-memory-123",
+        sha: "abc123",
+      };
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/distribute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ repo_id: "repo-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const events = await parseDistributionEvents(response);
+    const types = events.map((event) => event.type);
+
+    expect(types).toContain("distribution_start");
+    expect(types).toContain("pack_rendered");
+    expect(types).toContain("branch_created");
+    expect(types).toContain("file_committed");
+    expect(types).toContain("pr_creating");
+    expect(types).toContain("pr_created");
+    expect(types).toContain("distribution_complete");
+    expect(types).not.toContain("distribution_error");
+
+    expect(types.indexOf("branch_created")).toBeGreaterThan(types.indexOf("pack_rendered"));
+    expect(types.indexOf("file_committed")).toBeGreaterThan(types.indexOf("branch_created"));
+    expect(types.indexOf("pr_creating")).toBeGreaterThan(types.indexOf("file_committed"));
+    expect(types.indexOf("pr_created")).toBeGreaterThan(types.indexOf("pr_creating"));
+  });
+
   it("returns distribution_complete with markdown when PR creation fails", async () => {
     const { client, updates } = createSupabaseMock({
       latestRunSummary: { pack: EMPTY_PACK },
@@ -237,4 +289,3 @@ describe("POST /api/distribute fallback behavior", () => {
     expect(distribution.status).toBe("failed");
   });
 });
-
