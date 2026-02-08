@@ -91,7 +91,7 @@ export function RepoSelector({ demoRepoFullName, onSelectRepo, disabled = false 
       <Card className="border-zinc-800 bg-zinc-900/40">
         <CardHeader>
           <CardTitle className="text-zinc-100">Connect your own repo</CardTitle>
-          <CardDescription>Use your GitHub token-backed repository list.</CardDescription>
+          <CardDescription>Load your public GitHub repositories only.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button onClick={loadRepos} variant="secondary" disabled={disabled || loadingRepos} className="w-full">
@@ -123,6 +123,11 @@ export function RepoSelector({ demoRepoFullName, onSelectRepo, disabled = false 
             Import selected repository
           </Button>
 
+          {!loadingRepos && repos.length === 0 && !repoError ? (
+            <p className="text-xs text-zinc-500">
+              No public repositories found for this account.
+            </p>
+          ) : null}
           {repoError ? <p className="text-sm text-red-300">{repoError}</p> : null}
         </CardContent>
       </Card>
