@@ -201,6 +201,7 @@ function buildBrainGraph(events: ImportEvent[]) {
 
 export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
+  const [lastSelection, setLastSelection] = useState<ImportRepoRequest | null>(null);
   const [events, setEvents] = useState<ImportEvent[]>([]);
   const [phase, setPhase] = useState<ImportPhase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -226,6 +227,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   }, [events, error, phase]);
 
   const startImport = async (repoSelection: ImportRepoRequest) => {
+    setLastSelection(repoSelection);
     const fullName = `${repoSelection.owner}/${repoSelection.repo}`;
     setActiveRepo(fullName);
     setEvents([]);
@@ -295,7 +297,23 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           <CardTitle className="text-zinc-100">Neural activity and memory graph</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-zinc-300">{statusText}</p>
+          <p className="text-sm text-zinc-300" aria-live="polite">
+            {statusText}
+          </p>
+          {phase === "error" ? (
+            <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
+              <p>{error ?? "Import encountered an error."}</p>
+              {lastSelection ? (
+                <button
+                  type="button"
+                  onClick={() => startImport(lastSelection)}
+                  className="mt-2 inline-flex rounded-md border border-rose-300/40 px-3 py-1 text-xs hover:bg-rose-500/20"
+                >
+                  Retry import
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {activeRepo ? <p className="text-xs text-zinc-500">Active repo: {activeRepo}</p> : null}
 
           <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
