@@ -16,6 +16,15 @@ interface OnboardingFlowProps {
 
 type ImportPhase = "idle" | "importing" | "ready" | "error";
 type StorageMode = "supabase" | "memory-fallback";
+type OnboardingPhase =
+  | "idle"
+  | "importing"
+  | "ready"
+  | "consolidating"
+  | "consolidated"
+  | "distributing"
+  | "distributed"
+  | "error";
 
 interface ParsedImportEvent {
   type: string;
@@ -52,14 +61,18 @@ const BrainScene = dynamic(
   },
 );
 
-const PHASE_ORDER: Record<ImportPhase, number> = {
+const PHASE_ORDER: Record<OnboardingPhase, number> = {
   idle: 0,
   importing: 1,
   ready: 2,
-  error: 3,
+  consolidating: 3,
+  consolidated: 4,
+  distributing: 5,
+  distributed: 6,
+  error: 7,
 };
 
-function moveForwardPhase(current: ImportPhase, next: ImportPhase) {
+function moveForwardPhase(current: OnboardingPhase, next: OnboardingPhase) {
   return PHASE_ORDER[next] >= PHASE_ORDER[current] ? next : current;
 }
 
@@ -204,10 +217,11 @@ async function loadGraph(repoSelection: ImportRepoRequest) {
 
 export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
+  const [activeRepoId, setActiveRepoId] = useState<string | null>(null);
   const [activeSelection, setActiveSelection] = useState<ImportRepoRequest | null>(null);
   const [lastSelection, setLastSelection] = useState<ImportRepoRequest | null>(null);
   const [events, setEvents] = useState<ImportEvent[]>([]);
-  const [phase, setPhase] = useState<ImportPhase>("idle");
+  const [phase, setPhase] = useState<OnboardingPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [storageMode, setStorageMode] = useState<StorageMode | null>(null);
   const [graph, setGraph] = useState<GraphPayload>(EMPTY_GRAPH);
@@ -294,6 +308,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
     const fullName = `${repoSelection.owner}/${repoSelection.repo}`;
     setActiveRepo(fullName);
+    setActiveRepoId(null);
     setEvents([]);
     setError(null);
     setStorageMode(null);
@@ -347,6 +362,11 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           }
 
           if (chunkEvents.some((event) => event.type === "complete")) {
+            const completeEvent = chunkEvents.findLast((event) => event.type === "complete");
+            const completeData = completeEvent?.data as Record<string, unknown> | undefined;
+            if (typeof completeData?.repo_id === "string") {
+              setActiveRepoId(completeData.repo_id);
+            }
             setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
           }
         }
