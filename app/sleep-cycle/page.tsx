@@ -1,7 +1,17 @@
 import { SleepCyclePanel } from "@/components/sleep-cycle/SleepCyclePanel";
 import type { ConsolidationModelOutput } from "@/lib/codex/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { isMissingProfilesTableError, SCHEMA_NOT_READY_PROFILES_MESSAGE } from "@/lib/supabase/schema-guard";
+import {
+  listEpisodesForRepo,
+  listReposForUser,
+  listRulesForRepo,
+  latestCompletedRunForRepo,
+} from "@/lib/fallback/runtime-memory-store";
+import {
+  isProfilesSchemaNotReadyError,
+  resolveStorageModeAfterProfilesPreflight,
+  SCHEMA_NOT_READY_PROFILES_MESSAGE,
+} from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
 
 function normalizePack(maybePack: unknown): ConsolidationModelOutput | null {
@@ -44,13 +54,15 @@ export default async function SleepCyclePage() {
     );
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  let storageMode: "supabase" | "memory-fallback";
 
-  if (profileError && isMissingProfilesTableError(profileError)) {
+  try {
+    storageMode = await resolveStorageModeAfterProfilesPreflight(supabase);
+  } catch (error) {
+    if (!isProfilesSchemaNotReadyError(error)) {
+      throw error;
+    }
+
     return (
       <section className="space-y-4">
         <div className="space-y-1">
@@ -64,6 +76,47 @@ export default async function SleepCyclePage() {
         </Card>
       </section>
     );
+  }
+
+  if (storageMode === "memory-fallback") {
+    const repos = listReposForUser(user.id);
+    const mappedRepos = repos.map((repo) => ({
+      id: repo.id,
+      fullName: repo.full_name,
+      episodeCount: listEpisodesForRepo(repo.id).length,
+      ruleCount: listRulesForRepo(repo.id).length,
+    }));
+    const defaultRepoId = mappedRepos[0]?.id ?? null;
+    const latestRun = defaultRepoId ? latestCompletedRunForRepo(defaultRepoId) : null;
+    const latestPack = normalizePack((latestRun?.summary as { pack?: unknown } | null)?.pack);
+
+    return (
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-semibold text-zinc-100">Sleep Cycle</h2>
+          <p className="text-zinc-300">
+            Consolidate episodes into durable rules and memory salience updates while tracking the live dream-state
+            stream.
+          </p>
+        </div>
+        <Card className="border-amber-500/30 bg-amber-500/10">
+          <CardContent className="py-3 text-xs text-amber-100/90">
+            Local fallback mode active: reading and consolidating data from in-memory runtime storage because Supabase
+            schema cache is unavailable.
+          </CardContent>
+        </Card>
+        <SleepCyclePanel repos={mappedRepos} defaultRepoId={defaultRepoId} initialPack={latestPack} />
+      </section>
+    );
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (profileError) {
+    throw new Error(profileError.message);
   }
 
   const { data: repos } = profile?.id

@@ -40,6 +40,8 @@ interface ConsolidationProgress {
   contradictions: number;
 }
 
+type StorageMode = "supabase" | "memory-fallback";
+
 function nextDreamPhase(current: DreamPhase, eventType: ConsolidationEventType): DreamPhase {
   if (eventType === "consolidation_error") {
     return "error";
@@ -142,6 +144,7 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
   });
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [storageMode, setStorageMode] = useState<StorageMode | null>(null);
   const [summary, setSummary] = useState<ConsolidationSummary | null>(
     initialPack
       ? {
@@ -171,6 +174,7 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
     setIsRunning(true);
     setError(null);
     setSummary(null);
+    setStorageMode(null);
     setEvents([]);
     setProgress({
       patterns: 0,
@@ -192,6 +196,11 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
       if (!response.ok || !response.body) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(payload?.error ?? "Failed to start consolidation stream");
+      }
+
+      const modeHeader = response.headers.get("x-hippocampus-storage-mode");
+      if (modeHeader === "supabase" || modeHeader === "memory-fallback") {
+        setStorageMode(modeHeader);
       }
 
       const reader = response.body.getReader();
@@ -296,6 +305,13 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
           {error ? (
             <p role="alert" className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
               {error}
+            </p>
+          ) : null}
+
+          {storageMode === "memory-fallback" ? (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100/90">
+              Local fallback mode active: consolidation data is being read from and written to in-memory runtime
+              storage.
             </p>
           ) : null}
         </CardContent>
