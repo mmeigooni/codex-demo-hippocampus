@@ -3,10 +3,6 @@ import { NextResponse } from "next/server";
 import { fetchUserRepos } from "@/lib/github/client";
 import { createServerClient } from "@/lib/supabase/server";
 
-function getFallbackGitHubToken() {
-  return process.env.GITHUB_TOKEN ?? null;
-}
-
 export async function GET() {
   try {
     const supabase = await createServerClient();
@@ -23,21 +19,22 @@ export async function GET() {
 
     const session = sessionResult.data.session;
 
-    const providerToken = session?.provider_token ?? getFallbackGitHubToken();
+    const providerToken = session?.provider_token;
 
     if (!providerToken) {
       return NextResponse.json(
         {
           error:
-            "Missing GitHub provider token. Re-authenticate with GitHub or set GITHUB_TOKEN for local development.",
+            "Missing GitHub provider token. Re-authenticate with GitHub to load public repositories.",
         },
         { status: 400 },
       );
     }
 
     const repos = await fetchUserRepos(providerToken);
+    const publicRepos = repos.filter((repo) => !repo.private);
 
-    return NextResponse.json({ repos });
+    return NextResponse.json({ repos: publicRepos });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error fetching GitHub repos";
     return NextResponse.json({ error: message }, { status: 500 });
