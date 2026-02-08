@@ -20,6 +20,17 @@ interface BrainGraphProps {
 function layoutNodes(nodes: BrainNodeModel[], edges: BrainEdgeModel[]) {
   const positions = new Map<string, [number, number, number]>();
   const vectors = new Map<string, { x: number; y: number; z: number }>();
+  const attachedEdgesByNode = new Map<string, BrainEdgeModel[]>();
+
+  for (const edge of edges) {
+    const sourceAttached = attachedEdgesByNode.get(edge.source) ?? [];
+    sourceAttached.push(edge);
+    attachedEdgesByNode.set(edge.source, sourceAttached);
+
+    const targetAttached = attachedEdgesByNode.get(edge.target) ?? [];
+    targetAttached.push(edge);
+    attachedEdgesByNode.set(edge.target, targetAttached);
+  }
 
   nodes.forEach((node, index) => {
     const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2;
@@ -56,7 +67,7 @@ function layoutNodes(nodes: BrainNodeModel[], edges: BrainEdgeModel[]) {
         forceZ += dz * repulsion;
       }
 
-      const attached = edges.filter((edge) => edge.source === node.id || edge.target === node.id);
+      const attached = attachedEdgesByNode.get(node.id) ?? [];
       for (const edge of attached) {
         const otherId = edge.source === node.id ? edge.target : edge.source;
         const otherVector = vectors.get(otherId);
@@ -76,7 +87,17 @@ function layoutNodes(nodes: BrainNodeModel[], edges: BrainEdgeModel[]) {
   for (const node of nodes) {
     const vector = vectors.get(node.id);
     if (!vector) continue;
-    positions.set(node.id, [vector.x, vector.y, vector.z]);
+
+    if (!Number.isFinite(vector.x) || !Number.isFinite(vector.y) || !Number.isFinite(vector.z)) {
+      positions.set(node.id, [0, 0, 0]);
+      continue;
+    }
+
+    const magnitude = Math.hypot(vector.x, vector.y, vector.z);
+    const maxRadius = 4.6;
+    const scale = magnitude > maxRadius ? maxRadius / magnitude : 1;
+
+    positions.set(node.id, [vector.x * scale, vector.y * scale, vector.z * scale]);
   }
 
   return positions;

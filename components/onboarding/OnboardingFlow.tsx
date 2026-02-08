@@ -208,11 +208,31 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [error, setError] = useState<string | null>(null);
   const [storageMode, setStorageMode] = useState<StorageMode | null>(null);
 
-  const activityEvents = useMemo(() => events.map((event, index) => toActivityEvent(event, index)), [events]);
+  const activityEvents = useMemo(() => {
+    const mappedEvents = events.map((event, index) => toActivityEvent(event, index));
+
+    if (phase === "importing" && mappedEvents.length === 0 && activeRepo) {
+      return [
+        {
+          id: `bootstrap-${activeRepo}`,
+          type: "import_bootstrap",
+          title: `Preparing ${activeRepo}`,
+          subtitle: "Verifying repository access and loading merged pull requests...",
+          raw: { repo: activeRepo },
+        } satisfies ActivityEventView,
+      ];
+    }
+
+    return mappedEvents;
+  }, [activeRepo, events, phase]);
   const graph = useMemo(() => buildBrainGraph(events), [events]);
 
   const statusText = useMemo(() => {
     if (phase === "importing") {
+      if (events.length === 0) {
+        return "Preparing import. Verifying repository access and scanning merged pull requests.";
+      }
+
       return "Import in progress. Neural feed is live.";
     }
 
