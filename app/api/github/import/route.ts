@@ -11,6 +11,11 @@ import {
   generateSearchRules,
   summarizeTokenReduction,
 } from "@/lib/codex/search";
+import {
+  isPrivateRepo,
+  MISSING_PROVIDER_TOKEN_MESSAGE,
+  PRIVATE_REPOS_NOT_SUPPORTED_MESSAGE,
+} from "@/lib/github/public-only-policy";
 import { createServerClient } from "@/lib/supabase/server";
 
 function buildSseMessage(event: ImportEvent) {
@@ -85,8 +90,7 @@ export async function POST(request: Request) {
   if (!providerToken) {
     return Response.json(
       {
-        error:
-          "Missing GitHub provider token. Re-authenticate with GitHub to import public repositories.",
+        error: MISSING_PROVIDER_TOKEN_MESSAGE,
       },
       { status: 400 },
     );
@@ -99,10 +103,10 @@ export async function POST(request: Request) {
 
   try {
     const targetRepo = await fetchRepo(owner, repo, providerToken);
-    if (targetRepo.private) {
+    if (isPrivateRepo(targetRepo)) {
       return Response.json(
         {
-          error: "Private repositories are not supported in public-only mode.",
+          error: PRIVATE_REPOS_NOT_SUPPORTED_MESSAGE,
         },
         { status: 403 },
       );

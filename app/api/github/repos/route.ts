@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { fetchUserRepos } from "@/lib/github/client";
+import {
+  filterPublicRepos,
+  MISSING_PROVIDER_TOKEN_MESSAGE,
+} from "@/lib/github/public-only-policy";
 import { createServerClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -24,15 +28,14 @@ export async function GET() {
     if (!providerToken) {
       return NextResponse.json(
         {
-          error:
-            "Missing GitHub provider token. Re-authenticate with GitHub to load public repositories.",
+          error: MISSING_PROVIDER_TOKEN_MESSAGE,
         },
         { status: 400 },
       );
     }
 
     const repos = await fetchUserRepos(providerToken);
-    const publicRepos = repos.filter((repo) => !repo.private);
+    const publicRepos = filterPublicRepos(repos);
 
     return NextResponse.json({ repos: publicRepos });
   } catch (error) {
