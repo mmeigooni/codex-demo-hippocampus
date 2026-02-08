@@ -1,30 +1,103 @@
-import Link from "next/link";
-
+import { SleepCyclePanel } from "@/components/sleep-cycle/SleepCyclePanel";
+import type { ConsolidationModelOutput } from "@/lib/codex/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { createServerClient } from "@/lib/supabase/server";
 
-export default function SleepCyclePage() {
+function normalizePack(maybePack: unknown): ConsolidationModelOutput | null {
+  if (!maybePack || typeof maybePack !== "object") {
+    return null;
+  }
+
+  const value = maybePack as Partial<ConsolidationModelOutput>;
+
+  return {
+    patterns: Array.isArray(value.patterns) ? value.patterns : [],
+    rules_to_promote: Array.isArray(value.rules_to_promote) ? value.rules_to_promote : [],
+    contradictions: Array.isArray(value.contradictions) ? value.contradictions : [],
+    salience_updates: Array.isArray(value.salience_updates) ? value.salience_updates : [],
+    prune_candidates: Array.isArray(value.prune_candidates) ? value.prune_candidates : [],
+  };
+}
+
+export default async function SleepCyclePage() {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return (
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-semibold text-zinc-100">Sleep Cycle</h2>
+        </div>
+        <Card className="border-zinc-800 bg-zinc-900/40">
+          <CardHeader>
+            <CardTitle className="text-zinc-100">Authentication required</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-zinc-300">
+            Sign in to run consolidation and view dream-state outputs.
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const { data: repos } = profile?.id
+    ? await supabase
+        .from("repos")
+        .select("id, full_name")
+        .eq("connected_by_profile_id", profile.id)
+        .order("updated_at", { ascending: false })
+    : { data: [] as Array<{ id: string; full_name: string }> };
+
+  const mappedRepos = await Promise.all(
+    (repos ?? []).map(async (repo) => {
+      const [episodesResult, rulesResult] = await Promise.all([
+        supabase.from("episodes").select("id", { count: "exact", head: true }).eq("repo_id", repo.id),
+        supabase.from("rules").select("id", { count: "exact", head: true }).eq("repo_id", repo.id),
+      ]);
+
+      return {
+        id: repo.id,
+        fullName: repo.full_name,
+        episodeCount: episodesResult.count ?? 0,
+        ruleCount: rulesResult.count ?? 0,
+      };
+    }),
+  );
+
+  const defaultRepoId = mappedRepos[0]?.id ?? null;
+
+  const { data: latestRun } = defaultRepoId
+    ? await supabase
+        .from("consolidation_runs")
+        .select("summary")
+        .eq("repo_id", defaultRepoId)
+        .eq("status", "completed")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null as { summary?: unknown } | null };
+
+  const latestPack = normalizePack((latestRun?.summary as { pack?: unknown } | null)?.pack);
+
   return (
     <section className="space-y-4">
       <div className="space-y-1">
         <h2 className="text-2xl font-semibold text-zinc-100">Sleep Cycle</h2>
         <p className="text-zinc-300">
-          Consolidation and dream-state workflows ship in Wave 10. This placeholder keeps navigation stable.
+          Consolidate episodes into durable rules and memory salience updates while tracking the live dream-state stream.
         </p>
       </div>
 
-      <Card className="border-zinc-800 bg-zinc-900/40">
-        <CardHeader>
-          <CardTitle className="text-zinc-100">Coming in Wave 10</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-zinc-300">
-          <p>
-            Keep importing episodes from the dashboard while consolidation endpoints and live progress UI are prepared.
-          </p>
-          <p>
-            Return to the <Link className="text-cyan-300 hover:text-cyan-200" href="/dashboard">dashboard</Link>.
-          </p>
-        </CardContent>
-      </Card>
+      <SleepCyclePanel repos={mappedRepos} defaultRepoId={defaultRepoId} initialPack={latestPack} />
     </section>
   );
 }
