@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 
 import type { BrainEdgeModel, BrainNodeModel } from "@/components/brain/types";
@@ -8,6 +8,8 @@ import { NeuralActivityFeed } from "@/components/feed/NeuralActivityFeed";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useConsolidationStream } from "@/hooks/useConsolidationStream";
+import { useDistributionStream } from "@/hooks/useDistributionStream";
 import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 
 interface OnboardingFlowProps {
@@ -227,6 +229,29 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [graph, setGraph] = useState<GraphPayload>(EMPTY_GRAPH);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState<string | null>(null);
+  const [consolidationRepoId, setConsolidationRepoId] = useState<string | null>(null);
+  const [distributionRepoId, setDistributionRepoId] = useState<string | null>(null);
+
+  const {
+    runConsolidation,
+    phase: consolidationPhase,
+    events: consolidationEvents,
+    progress: consolidationProgress,
+    isRunning: isConsolidating,
+    error: consolidationError,
+    summary: consolidationSummary,
+    reasoningText,
+    isReasoningActive,
+  } = useConsolidationStream();
+
+  const {
+    runDistribution,
+    isDistributing,
+    distributionResult,
+    distributionPhase,
+    copiedMarkdown,
+    copyDistributionMarkdown,
+  } = useDistributionStream();
 
   const activityEvents = useMemo(() => {
     const mappedEvents = events.map((event, index) => toActivityEvent(event, index));
@@ -309,6 +334,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     const fullName = `${repoSelection.owner}/${repoSelection.repo}`;
     setActiveRepo(fullName);
     setActiveRepoId(null);
+    setConsolidationRepoId(null);
+    setDistributionRepoId(null);
     setEvents([]);
     setError(null);
     setStorageMode(null);
@@ -380,6 +407,77 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       setPhase("error");
     }
   };
+
+  const handleRunConsolidation = async () => {
+    if (!activeRepoId) {
+      return;
+    }
+
+    setError(null);
+    setConsolidationRepoId(activeRepoId);
+    setDistributionRepoId(null);
+    setPhase("consolidating");
+    await runConsolidation(activeRepoId);
+  };
+
+  const handleRunDistribution = async () => {
+    if (!activeRepoId || !consolidationSummary?.pack) {
+      return;
+    }
+
+    setError(null);
+    setDistributionRepoId(activeRepoId);
+    setPhase("distributing");
+    await runDistribution(activeRepoId);
+  };
+
+  useEffect(() => {
+    if (!consolidationRepoId || consolidationRepoId !== activeRepoId) {
+      return;
+    }
+
+    if (isConsolidating) {
+      setPhase((current) => moveForwardPhase(current, "consolidating"));
+      return;
+    }
+
+    if (consolidationSummary) {
+      setPhase((current) => moveForwardPhase(current, "consolidated"));
+    }
+  }, [activeRepoId, consolidationRepoId, consolidationSummary, isConsolidating]);
+
+  useEffect(() => {
+    if (!distributionRepoId || distributionRepoId !== activeRepoId) {
+      return;
+    }
+
+    if (isDistributing) {
+      setPhase((current) => moveForwardPhase(current, "distributing"));
+      return;
+    }
+
+    if (distributionResult && !distributionResult.error) {
+      setPhase((current) => moveForwardPhase(current, "distributed"));
+    }
+  }, [activeRepoId, distributionRepoId, distributionResult, isDistributing]);
+
+  useEffect(() => {
+    if (!consolidationError) {
+      return;
+    }
+
+    setError(consolidationError);
+    setPhase("error");
+  }, [consolidationError]);
+
+  useEffect(() => {
+    if (!distributionResult?.error) {
+      return;
+    }
+
+    setError(distributionResult.error);
+    setPhase("error");
+  }, [distributionResult]);
 
   const noConsolidatedRules = activeSelection && !graphLoading && graph.stats.ruleCount === 0;
 
