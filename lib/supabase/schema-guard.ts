@@ -13,6 +13,8 @@ interface SupabaseLikeClient {
   };
 }
 
+export type StorageMode = "supabase" | "memory-fallback";
+
 function extractErrorMessage(error: unknown) {
   if (typeof error === "string") {
     return error;
@@ -76,5 +78,31 @@ export async function assertProfilesSchemaReady(supabase: SupabaseLikeClient) {
 
   if (error && isMissingProfilesTableError(error)) {
     throw new ProfilesSchemaNotReadyError();
+  }
+}
+
+export function isSchemaFallbackEnabled() {
+  return process.env.NODE_ENV !== "production";
+}
+
+export async function resolveStorageModeAfterProfilesPreflight(
+  supabase: SupabaseLikeClient,
+): Promise<StorageMode> {
+  try {
+    await assertProfilesSchemaReady(supabase);
+    return "supabase";
+  } catch (error) {
+    if (!isProfilesSchemaNotReadyError(error) && !isMissingProfilesTableError(error)) {
+      throw error;
+    }
+
+    if (!isSchemaFallbackEnabled()) {
+      throw new ProfilesSchemaNotReadyError();
+    }
+
+    console.warn(
+      `[schema-guard] Falling back to in-memory runtime store because public.profiles is missing in schema cache (${SCHEMA_NOT_READY_PROFILES_CODE})`,
+    );
+    return "memory-fallback";
   }
 }
