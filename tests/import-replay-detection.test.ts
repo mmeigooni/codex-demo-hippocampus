@@ -160,6 +160,7 @@ beforeEach(() => {
     salience_score: 5,
     pattern_key: "review-hygiene",
     the_pattern: "pattern",
+    why_it_matters: "matters",
     triggers: ["tests"],
   }));
 });
@@ -175,6 +176,7 @@ describe("POST /api/github/import replay detection", () => {
         salience_score: 7,
         pattern_key: "review-hygiene",
         the_pattern: "cached-pattern",
+        why_it_matters: "cached-why-101",
         triggers: ["cache"],
       },
       {
@@ -184,6 +186,7 @@ describe("POST /api/github/import replay detection", () => {
         salience_score: 6,
         pattern_key: "review-hygiene",
         the_pattern: "cached-pattern",
+        why_it_matters: "cached-why-102",
         triggers: ["cache"],
       },
     ]);
@@ -205,6 +208,12 @@ describe("POST /api/github/import replay detection", () => {
     expect(types).toContain("replay_manifest");
     expect(types.filter((type) => type === "episode_created")).toHaveLength(2);
     expect(types).not.toContain("episode_skipped");
+    expect(events.find((event) => event.type === "episode_created")?.data).toMatchObject({
+      pr_number: 101,
+      episode: {
+        why_it_matters: "cached-why-101",
+      },
+    });
 
     const completeEvent = events.find((event) => event.type === "complete");
     expect(completeEvent?.data).toMatchObject({
@@ -230,6 +239,7 @@ describe("POST /api/github/import replay detection", () => {
         salience_score: 7,
         pattern_key: "review-hygiene",
         the_pattern: "cached-pattern",
+        why_it_matters: "cached-why-101",
         triggers: ["cache"],
       },
     ]);
@@ -251,6 +261,12 @@ describe("POST /api/github/import replay detection", () => {
     expect(types).not.toContain("replay_manifest");
     expect(types).toContain("episode_created");
     expect(mockEncodeEpisode).toHaveBeenCalled();
+    expect(events.find((event) => event.type === "episode_created")?.data).toMatchObject({
+      pr_number: 101,
+      episode: {
+        why_it_matters: "matters",
+      },
+    });
   });
 
   it("does not replay when there are no merged PRs", async () => {

@@ -19,10 +19,8 @@ import { useConsolidationStream } from "@/hooks/useConsolidationStream";
 import { useDistributionStream } from "@/hooks/useDistributionStream";
 import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent } from "@/lib/codex/types";
-import {
-  graphNodeIdFromConsolidationEvent,
-  graphNodeIdFromImportEvent,
-} from "@/lib/feed/cross-selection";
+import { graphNodeIdFromConsolidationEvent } from "@/lib/feed/cross-selection";
+import { groupImportActivityEvents, toImportActivityEvent } from "@/lib/feed/import-activity";
 import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 
 interface OnboardingFlowProps {
@@ -117,90 +115,6 @@ function extractEventsFromBuffer(rawBuffer: string) {
     });
 
   return { events, remainder };
-}
-
-function toActivityEvent(event: ImportEvent, index: number): ActivityEventView | null {
-  const prefix = `${event.type}-${index}`;
-
-  if (event.type === "replay_manifest") {
-    return null;
-  }
-
-  if (event.type === "pr_found") {
-    return {
-      id: prefix,
-      type: event.type,
-      title: `Discovered ${String(event.data.count ?? 0)} merged pull requests`,
-      raw: event.data,
-    };
-  }
-
-  if (event.type === "encoding_start") {
-    return {
-      id: prefix,
-      type: event.type,
-      title: `Encoding PR #${String(event.data.pr_number ?? "?")}`,
-      subtitle: String(event.data.title ?? "Untitled PR"),
-      raw: event.data,
-    };
-  }
-
-  if (event.type === "episode_created") {
-    const episode = event.data.episode as
-      | { id?: string; title?: string; salience_score?: number; the_pattern?: string; triggers?: string[] }
-      | undefined;
-
-    const reduction = event.data.token_reduction as
-      | { reductionRatio?: number; rawTokens?: number; reducedTokens?: number }
-      | undefined;
-
-    const ratio = reduction?.reductionRatio ?? 0;
-
-    return {
-      id: prefix,
-      type: event.type,
-      title: episode?.title ?? "Episode created",
-      subtitle: `pattern: ${String(episode?.the_pattern ?? "unknown")}`,
-      salience: Number(episode?.salience_score ?? 0),
-      triggers: Array.isArray(episode?.triggers) ? episode.triggers : [],
-      graphNodeId: graphNodeIdFromImportEvent(event) ?? undefined,
-      snippet:
-        reduction && typeof ratio === "number"
-          ? `token reduction ${(ratio * 100).toFixed(0)}% (${reduction.reducedTokens}/${reduction.rawTokens})`
-          : undefined,
-      raw: event.data,
-    };
-  }
-
-  if (event.type === "episode_skipped") {
-    return {
-      id: prefix,
-      type: event.type,
-      title: `Skipped PR #${String(event.data.pr_number ?? "?")}`,
-      subtitle: `${String(event.data.title ?? "Untitled PR")} — already imported`,
-      raw: event.data,
-    };
-  }
-
-  if (event.type === "encoding_error") {
-    return {
-      id: prefix,
-      type: event.type,
-      title: `Import error on PR #${String(event.data.pr_number ?? "?")}`,
-      subtitle: String(event.data.message ?? "Unknown error"),
-      raw: event.data,
-    };
-  }
-
-  const failed = Number(event.data.failed ?? 0);
-  return {
-    id: prefix,
-    type: event.type,
-    title: `Import complete: ${String(event.data.total ?? 0)} episodes created`,
-    subtitle: failed > 0 ? `${failed} PR(s) failed encoding` : undefined,
-    variant: "import",
-    raw: event.data,
-  };
 }
 
 function consolidationEventToActivity(event: ConsolidationEvent, index: number): ActivityEventView | null {
@@ -382,9 +296,11 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   } = useDistributionStream();
 
   const activityEvents = useMemo(() => {
-    const importActivityEvents = events
-      .map((event, index) => toActivityEvent(event, index))
-      .filter((event): event is ActivityEventView => event !== null);
+    const importActivityEvents = groupImportActivityEvents(
+      events
+        .map((event, index) => toImportActivityEvent(event, index))
+        .filter((event): event is ActivityEventView => event !== null),
+    );
     const consolidationActivityEvents = consolidationEvents
       .map((event, index) => consolidationEventToActivity(event, index))
       .filter((event): event is ActivityEventView => event !== null);
@@ -912,6 +828,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         demoRepoFullName={demoRepoFullName}
         onSelectRepo={startImport}
         disabled={phase === "importing" || phase === "consolidating" || phase === "distributing"}
+        collapsed={phase !== "idle" && phase !== "error"}
+        activeRepoName={activeRepo ?? undefined}
       />
 
       <Card className="border-zinc-800 bg-zinc-900/40">

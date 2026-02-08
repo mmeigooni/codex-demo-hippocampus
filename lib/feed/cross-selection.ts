@@ -6,6 +6,22 @@ export type SelectionSource = "feed" | "graph";
 export interface GraphLinkedActivityEvent {
   id: string;
   graphNodeId?: string;
+  graphNodeIds?: string[];
+}
+
+export function activityEventMatchesNodeId<TEvent extends GraphLinkedActivityEvent>(
+  event: TEvent,
+  selectedNodeId: string | null,
+) {
+  if (!selectedNodeId) {
+    return false;
+  }
+
+  if (event.graphNodeId === selectedNodeId) {
+    return true;
+  }
+
+  return Array.isArray(event.graphNodeIds) && event.graphNodeIds.includes(selectedNodeId);
 }
 
 export function graphNodeIdFromImportEvent(event: ImportEvent): string | null {
@@ -67,7 +83,7 @@ export function buildFeedRenderWindow<TEvent extends GraphLinkedActivityEvent>({
     };
   }
 
-  const selectedEvent = [...events].reverse().find((event) => event.graphNodeId === selectedNodeId) ?? null;
+  const selectedEvent = [...events].reverse().find((event) => activityEventMatchesNodeId(event, selectedNodeId)) ?? null;
 
   if (!selectedEvent) {
     return {

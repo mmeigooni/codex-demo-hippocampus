@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,8 @@ interface RepoSelectorProps {
   demoRepoFullName: string;
   onSelectRepo: (repo: { owner: string; repo: string }) => void;
   disabled?: boolean;
+  collapsed?: boolean;
+  activeRepoName?: string;
 }
 
 function parseFullName(fullName: string) {
@@ -22,7 +25,13 @@ function parseFullName(fullName: string) {
   return { owner, repo };
 }
 
-export function RepoSelector({ demoRepoFullName, onSelectRepo, disabled = false }: RepoSelectorProps) {
+export function RepoSelector({
+  demoRepoFullName,
+  onSelectRepo,
+  disabled = false,
+  collapsed = false,
+  activeRepoName,
+}: RepoSelectorProps) {
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [hasLoadedRepos, setHasLoadedRepos] = useState(false);
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
@@ -74,65 +83,98 @@ export function RepoSelector({ demoRepoFullName, onSelectRepo, disabled = false 
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card className="border-cyan-700/30 bg-zinc-900/60">
-        <CardHeader>
-          <CardTitle className="text-zinc-100">Recommended demo repo</CardTitle>
-          <CardDescription>{demoRepoFullName}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-zinc-300">
-            Start with the canonical demo corpus to populate your memory graph quickly.
-          </p>
-          <Button onClick={connectDemoRepo} disabled={disabled || !demoRepo} className="w-full">
-            Import {demoRepoFullName}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="border-zinc-800 bg-zinc-900/40">
-        <CardHeader>
-          <CardTitle className="text-zinc-100">Connect your own repo</CardTitle>
-          <CardDescription>Load your public GitHub repositories only.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button onClick={loadRepos} variant="secondary" disabled={disabled || loadingRepos} className="w-full">
-            {loadingRepos ? "Loading repos..." : "Load my repositories"}
-          </Button>
-
-          <label className="block space-y-2 text-sm text-zinc-300">
-            <span>Select repository</span>
-            <select
-              value={selectedFullName}
-              onChange={(event) => setSelectedFullName(event.target.value)}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-              disabled={disabled || repos.length === 0}
-            >
-              <option value="">Choose a repository...</option>
-              {repos.map((repo) => (
-                <option key={repo.id} value={repo.fullName}>
-                  {repo.fullName}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <Button
-            onClick={connectSelectedRepo}
-            disabled={disabled || !selectedFullName}
-            className="w-full"
+    <motion.div
+      layout
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="overflow-hidden"
+    >
+      <AnimatePresence initial={false} mode="wait">
+        {collapsed ? (
+          <motion.div
+            key="collapsed"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="flex h-12 items-center rounded-lg border border-cyan-700/30 bg-zinc-900/60 px-4"
           >
-            Import selected repository
-          </Button>
+            <div className="flex items-center gap-2 text-sm text-zinc-100">
+              <motion.span
+                className="h-2 w-2 rounded-full bg-cyan-300"
+                animate={{ opacity: [0.35, 1, 0.35] }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <span>Importing {activeRepoName ?? "repository"}...</span>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="expanded"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            className="grid gap-4 lg:grid-cols-2"
+          >
+            <Card className="border-cyan-700/30 bg-zinc-900/60">
+              <CardHeader>
+                <CardTitle className="text-zinc-100">Recommended demo repo</CardTitle>
+                <CardDescription>{demoRepoFullName}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-zinc-300">
+                  Start with the canonical demo corpus to populate your memory graph quickly.
+                </p>
+                <Button onClick={connectDemoRepo} disabled={disabled || !demoRepo} className="w-full">
+                  Import {demoRepoFullName}
+                </Button>
+              </CardContent>
+            </Card>
 
-          {!loadingRepos && hasLoadedRepos && repos.length === 0 && !repoError ? (
-            <p className="text-xs text-zinc-500">
-              No public repositories found for this account.
-            </p>
-          ) : null}
-          {repoError ? <p className="text-sm text-red-300">{repoError}</p> : null}
-        </CardContent>
-      </Card>
-    </div>
+            <Card className="border-zinc-800 bg-zinc-900/40">
+              <CardHeader>
+                <CardTitle className="text-zinc-100">Connect your own repo</CardTitle>
+                <CardDescription>Load your public GitHub repositories only.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button onClick={loadRepos} variant="secondary" disabled={disabled || loadingRepos} className="w-full">
+                  {loadingRepos ? "Loading repos..." : "Load my repositories"}
+                </Button>
+
+                <label className="block space-y-2 text-sm text-zinc-300">
+                  <span>Select repository</span>
+                  <select
+                    value={selectedFullName}
+                    onChange={(event) => setSelectedFullName(event.target.value)}
+                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    disabled={disabled || repos.length === 0}
+                  >
+                    <option value="">Choose a repository...</option>
+                    {repos.map((repo) => (
+                      <option key={repo.id} value={repo.fullName}>
+                        {repo.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <Button
+                  onClick={connectSelectedRepo}
+                  disabled={disabled || !selectedFullName}
+                  className="w-full"
+                >
+                  Import selected repository
+                </Button>
+
+                {!loadingRepos && hasLoadedRepos && repos.length === 0 && !repoError ? (
+                  <p className="text-xs text-zinc-500">
+                    No public repositories found for this account.
+                  </p>
+                ) : null}
+                {repoError ? <p className="text-sm text-red-300">{repoError}</p> : null}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }

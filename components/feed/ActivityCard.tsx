@@ -14,11 +14,14 @@ export interface ActivityEventView {
   subtitle?: string;
   salience?: number;
   triggers?: string[];
+  whyItMatters?: string;
   snippet?: string;
+  groupedEpisodes?: ActivityEventView[];
   variant?: "import" | "reasoning" | "consolidation" | "distribution";
   reasoningText?: string;
   isStreamingReasoning?: boolean;
   graphNodeId?: string;
+  graphNodeIds?: string[];
   raw: Record<string, unknown>;
 }
 
@@ -120,6 +123,13 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
             <TriggerPill key={`${event.id}-${trigger}`} trigger={trigger} />
           ))}
         </div>
+      ) : null}
+
+      {event.whyItMatters ? (
+        <p className="text-xs text-zinc-400 italic">
+          <span className="font-medium text-zinc-300 not-italic">Why it matters:</span>{" "}
+          {event.whyItMatters}
+        </p>
       ) : null}
 
       {event.snippet ? <CodeSnippet snippet={event.snippet} /> : null}
