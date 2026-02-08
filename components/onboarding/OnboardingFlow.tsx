@@ -139,6 +139,16 @@ function toActivityEvent(event: ImportEvent, index: number): ActivityEventView {
     };
   }
 
+  if (event.type === "episode_skipped") {
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Skipped PR #${String(event.data.pr_number ?? "?")}`,
+      subtitle: `${String(event.data.title ?? "Untitled PR")} — already imported`,
+      raw: event.data,
+    };
+  }
+
   if (event.type === "encoding_error") {
     return {
       id: prefix,
@@ -235,9 +245,25 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       const completeEvent = events.findLast((event) => event.type === "complete");
       const total = Number(completeEvent?.data.total ?? 0);
       const failed = Number(completeEvent?.data.failed ?? 0);
-      return failed > 0
-        ? `Import complete. ${total} episodes created (${failed} failed).`
-        : `Import complete. ${total} episodes created.`;
+      const skipped = Number(completeEvent?.data.skipped ?? 0);
+
+      if (total === 0 && skipped > 0 && failed === 0) {
+        return `Import complete. ${skipped} episodes already imported.`;
+      }
+
+      if (failed > 0 && skipped > 0) {
+        return `Import complete. ${total} episodes created (${skipped} already imported, ${failed} failed).`;
+      }
+
+      if (failed > 0) {
+        return `Import complete. ${total} episodes created (${failed} failed).`;
+      }
+
+      if (skipped > 0) {
+        return `Import complete. ${total} episodes created (${skipped} already imported).`;
+      }
+
+      return `Import complete. ${total} episodes created.`;
     }
 
     if (phase === "error") {
@@ -380,6 +406,11 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
             <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{graphError}</div>
           ) : null}
           {activeRepo ? <p className="text-xs text-zinc-500">Active repo: {activeRepo}</p> : null}
+          {phase === "importing" && activeSelection && !graphLoading ? (
+            <p className="text-xs text-cyan-100/80">
+              Existing snapshot: {graph.stats.episodeCount} episodes loaded while import stream is in progress.
+            </p>
+          ) : null}
           {noConsolidatedRules ? (
             <p className="text-xs text-amber-100/90">Run Sleep Cycle to generate rules.</p>
           ) : null}
