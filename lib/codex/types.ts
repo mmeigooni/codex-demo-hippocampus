@@ -115,3 +115,15 @@ export interface ConsolidationEvent<T = unknown> {
   type: ConsolidationEventType;
   data: T;
 }
+
+export type DistributionEventType =
+  | "distribution_start"
+  | "pack_rendered"
+  | "pr_created"
+  | "distribution_complete"
+  | "distribution_error";
+
+export interface DistributionEvent<T = unknown> {
+  type: DistributionEventType;
+  data: T;
+}
