@@ -1,16 +1,9 @@
-import {
-  fetchRepo,
-  fetchMergedPRs,
-  fetchPRDiff,
-  fetchPRReviews,
-} from "@/lib/github/client";
-import type { ImportEpisodeSummary, ImportEvent, ImportRepoRequest } from "@/lib/github/types";
+import { fetchRepo, fetchMergedPRs, fetchPRDiff, fetchPRReviews } from "@/lib/github/client";
 import { encodeEpisode } from "@/lib/codex/encoder";
-import {
-  executeSearch,
-  generateSearchRules,
-  summarizeTokenReduction,
-} from "@/lib/codex/search";
+import { executeSearch, generateSearchRules, summarizeTokenReduction } from "@/lib/codex/search";
+import { insertEpisodeForRepo, upsertRepoForUser } from "@/lib/fallback/runtime-memory-store";
+import { collectExistingPrNumbers, isUniqueViolationError } from "@/lib/github/import-idempotency";
+import type { ImportEpisodeSummary, ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 import {
   isPrivateRepo,
   MISSING_PROVIDER_TOKEN_MESSAGE,
@@ -23,7 +16,6 @@ import {
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
-import { insertEpisodeForRepo, upsertRepoForUser } from "@/lib/fallback/runtime-memory-store";
 
 function buildSseMessage(event: ImportEvent) {
   return `data: ${JSON.stringify(event)}\n\n`;
@@ -39,11 +31,7 @@ async function ensureProfileId(
   user: ProfileUserContext,
   supabase: Awaited<ReturnType<typeof createServerClient>>,
 ) {
-  const { data: existingProfile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: existingProfile } = await supabase.from("profiles").select("id").eq("user_id", user.id).maybeSingle();
 
   if (existingProfile?.id) {
     return existingProfile.id;
@@ -96,6 +84,34 @@ async function ensureSupabaseRepoId(
   return repoRecord.id;
 }
 
+async function listExistingEpisodePrNumbers(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  repoId: string,
+) {
+  const { data, error } = await supabase
+    .from("episodes")
+    .select("source_pr_number")
+    .eq("repo_id", repoId)
+    .not("source_pr_number", "is", null);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return collectExistingPrNumbers(data as Array<{ source_pr_number: number | null }> | null);
+}
+
+function skippedEvent(pr: { number: number; title: string }): ImportEvent {
+  return {
+    type: "episode_skipped",
+    data: {
+      pr_number: pr.number,
+      title: pr.title,
+      reason: "already_imported",
+    },
+  };
+}
+
 export async function POST(request: Request) {
   let body: Partial<ImportRepoRequest>;
 
@@ -113,10 +129,7 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createServerClient();
-  const [userResult, sessionResult] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.auth.getSession(),
-  ]);
+  const [userResult, sessionResult] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
 
   const user = userResult.data.user;
   if (!user) {
@@ -138,6 +151,7 @@ export async function POST(request: Request) {
   if (!providerToken && canUseAnonymousGithub) {
     console.warn("[import] provider_token missing; using anonymous GitHub API access in local/dev mode");
   }
+
   const userContext: ProfileUserContext = {
     id: user.id,
     githubUsername: user.user_metadata?.user_name ?? user.user_metadata?.preferred_username ?? null,
@@ -202,6 +216,9 @@ export async function POST(request: Request) {
 
         let created = 0;
         let failed = 0;
+        let skipped = 0;
+        const existingPrNumbers =
+          storageMode === "supabase" ? await listExistingEpisodePrNumbers(supabase, repoRecordId) : new Set<number>();
 
         for (const pr of pullRequests) {
           emit({
@@ -211,6 +228,12 @@ export async function POST(request: Request) {
               title: pr.title,
             },
           });
+
+          if (storageMode === "supabase" && existingPrNumbers.has(pr.number)) {
+            skipped += 1;
+            emit(skippedEvent(pr));
+            continue;
+          }
 
           try {
             const [reviews, diff] = await Promise.all([
@@ -251,8 +274,12 @@ export async function POST(request: Request) {
                       .select("id,title,source_pr_number,salience_score,pattern_key,the_pattern,triggers")
                       .single();
 
-                    if (insertError || !data) {
-                      throw new Error(insertError?.message ?? "Failed to create encoded episode");
+                    if (insertError) {
+                      throw insertError;
+                    }
+
+                    if (!data) {
+                      throw new Error("Failed to create encoded episode");
                     }
 
                     return data as ImportEpisodeSummary;
@@ -271,6 +298,10 @@ export async function POST(request: Request) {
                   })();
 
             created += 1;
+            if (storageMode === "supabase") {
+              existingPrNumbers.add(pr.number);
+            }
+
             emit({
               type: "episode_created",
               data: {
@@ -282,8 +313,21 @@ export async function POST(request: Request) {
               },
             });
           } catch (error) {
+            if (storageMode === "supabase" && isUniqueViolationError(error)) {
+              skipped += 1;
+              existingPrNumbers.add(pr.number);
+              emit(skippedEvent(pr));
+              continue;
+            }
+
             failed += 1;
-            const message = error instanceof Error ? error.message : "Failed to import PR";
+            const message =
+              error instanceof Error
+                ? error.message
+                : typeof error === "object" && error && "message" in error
+                  ? String((error as { message?: unknown }).message ?? "Failed to import PR")
+                  : "Failed to import PR";
+
             emit({
               type: "encoding_error",
               data: {
@@ -294,14 +338,14 @@ export async function POST(request: Request) {
           }
         }
 
-        emit({ type: "complete", data: { total: created, failed } });
+        emit({ type: "complete", data: { total: created, failed, skipped } });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unexpected import error";
         emit({
           type: "encoding_error",
           data: { message },
         });
-        emit({ type: "complete", data: { total: 0, failed: 1 } });
+        emit({ type: "complete", data: { total: 0, failed: 1, skipped: 0 } });
       } finally {
         controller.close();
       }
