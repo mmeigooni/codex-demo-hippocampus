@@ -22,6 +22,24 @@ interface ParsedImportEvent {
   data: Record<string, unknown>;
 }
 
+interface GraphPayload {
+  nodes: BrainNodeModel[];
+  edges: BrainEdgeModel[];
+  stats: {
+    episodeCount: number;
+    ruleCount: number;
+  };
+}
+
+const EMPTY_GRAPH: GraphPayload = {
+  nodes: [],
+  edges: [],
+  stats: {
+    episodeCount: 0,
+    ruleCount: 0,
+  },
+};
+
 const BrainScene = dynamic(
   () => import("@/components/brain/BrainScene").then((module) => module.BrainScene),
   {
@@ -131,82 +149,60 @@ function toActivityEvent(event: ImportEvent, index: number): ActivityEventView {
     };
   }
 
+  const failed = Number(event.data.failed ?? 0);
   return {
     id: prefix,
     type: event.type,
     title: `Import complete: ${String(event.data.total ?? 0)} episodes created`,
+    subtitle: failed > 0 ? `${failed} PR(s) failed encoding` : undefined,
     raw: event.data,
   };
 }
 
-function buildBrainGraph(events: ImportEvent[]) {
-  const nodes = new Map<string, BrainNodeModel>();
-  const edges: BrainEdgeModel[] = [];
+async function loadGraph(repoSelection: ImportRepoRequest) {
+  const query = new URLSearchParams({
+    owner: repoSelection.owner,
+    repo: repoSelection.repo,
+  });
 
-  for (const event of events) {
-    if (event.type !== "episode_created") {
-      continue;
-    }
+  const response = await fetch(`/api/graph?${query.toString()}`, {
+    method: "GET",
+  });
 
-    const episode = event.data.episode as
-      | {
-          id?: string;
-          title?: string;
-          salience_score?: number;
-          the_pattern?: string;
-          triggers?: string[];
-        }
-      | undefined;
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        nodes?: BrainNodeModel[];
+        edges?: BrainEdgeModel[];
+        stats?: { episodeCount?: number; ruleCount?: number };
+        error?: string;
+      }
+    | null;
 
-    if (!episode?.id || !episode.title) {
-      continue;
-    }
-
-    const episodeNodeId = `episode-${episode.id}`;
-    const episodeNode: BrainNodeModel = {
-      id: episodeNodeId,
-      type: "episode",
-      label: episode.title,
-      salience: Number(episode.salience_score ?? 0),
-      triggers: Array.isArray(episode.triggers) ? episode.triggers : [],
-    };
-
-    nodes.set(episodeNodeId, episodeNode);
-
-    const rulePattern = String(episode.the_pattern ?? "unknown-pattern").slice(0, 80);
-    const ruleNodeId = `rule-${rulePattern.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-
-    if (!nodes.has(ruleNodeId)) {
-      nodes.set(ruleNodeId, {
-        id: ruleNodeId,
-        type: "rule",
-        label: rulePattern,
-        salience: Math.max(4, Number(episode.salience_score ?? 0)),
-        triggers: Array.isArray(episode.triggers) ? episode.triggers : [],
-      });
-    }
-
-    edges.push({
-      id: `${episodeNodeId}-${ruleNodeId}`,
-      source: episodeNodeId,
-      target: ruleNodeId,
-      weight: Math.max(0.2, Math.min(1, Number(episode.salience_score ?? 0) / 10)),
-    });
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Failed to load memory graph");
   }
 
   return {
-    nodes: Array.from(nodes.values()),
-    edges,
-  };
+    nodes: Array.isArray(payload?.nodes) ? payload.nodes : [],
+    edges: Array.isArray(payload?.edges) ? payload.edges : [],
+    stats: {
+      episodeCount: Number(payload?.stats?.episodeCount ?? 0),
+      ruleCount: Number(payload?.stats?.ruleCount ?? 0),
+    },
+  } satisfies GraphPayload;
 }
 
 export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
+  const [activeSelection, setActiveSelection] = useState<ImportRepoRequest | null>(null);
   const [lastSelection, setLastSelection] = useState<ImportRepoRequest | null>(null);
   const [events, setEvents] = useState<ImportEvent[]>([]);
   const [phase, setPhase] = useState<ImportPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [storageMode, setStorageMode] = useState<StorageMode | null>(null);
+  const [graph, setGraph] = useState<GraphPayload>(EMPTY_GRAPH);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
 
   const activityEvents = useMemo(() => {
     const mappedEvents = events.map((event, index) => toActivityEvent(event, index));
@@ -225,7 +221,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
     return mappedEvents;
   }, [activeRepo, events, phase]);
-  const graph = useMemo(() => buildBrainGraph(events), [events]);
 
   const statusText = useMemo(() => {
     if (phase === "importing") {
@@ -238,7 +233,11 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
     if (phase === "ready") {
       const completeEvent = events.findLast((event) => event.type === "complete");
-      return `Import complete. ${String(completeEvent?.data.total ?? 0)} episodes created.`;
+      const total = Number(completeEvent?.data.total ?? 0);
+      const failed = Number(completeEvent?.data.failed ?? 0);
+      return failed > 0
+        ? `Import complete. ${total} episodes created (${failed} failed).`
+        : `Import complete. ${total} episodes created.`;
     }
 
     if (phase === "error") {
@@ -248,14 +247,33 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     return "Select a repository to begin.";
   }, [events, error, phase]);
 
+  const refreshGraph = async (repoSelection: ImportRepoRequest) => {
+    setGraphLoading(true);
+    setGraphError(null);
+
+    try {
+      const graphPayload = await loadGraph(repoSelection);
+      setGraph(graphPayload);
+    } catch (graphFetchError) {
+      const message = graphFetchError instanceof Error ? graphFetchError.message : "Failed to load memory graph";
+      setGraphError(message);
+    } finally {
+      setGraphLoading(false);
+    }
+  };
+
   const startImport = async (repoSelection: ImportRepoRequest) => {
     setLastSelection(repoSelection);
+    setActiveSelection(repoSelection);
+
     const fullName = `${repoSelection.owner}/${repoSelection.repo}`;
     setActiveRepo(fullName);
     setEvents([]);
     setError(null);
     setStorageMode(null);
     setPhase("importing");
+
+    await refreshGraph(repoSelection);
 
     try {
       const response = await fetch("/api/github/import", {
@@ -298,12 +316,17 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
             setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "error"));
           }
 
+          if (chunkEvents.some((event) => event.type === "episode_created" || event.type === "complete")) {
+            void refreshGraph(repoSelection);
+          }
+
           if (chunkEvents.some((event) => event.type === "complete")) {
             setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
           }
         }
       }
 
+      await refreshGraph(repoSelection);
       setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
     } catch (importError) {
       const message = importError instanceof Error ? importError.message : "Import failed";
@@ -311,6 +334,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       setPhase("error");
     }
   };
+
+  const noConsolidatedRules = activeSelection && !graphLoading && graph.stats.ruleCount === 0;
 
   return (
     <div className="space-y-6">
@@ -330,8 +355,11 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           </p>
           {storageMode === "memory-fallback" ? (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100/90">
-              Local fallback mode active: import data is being persisted to in-memory runtime storage because
-              Supabase schema cache is unavailable.
+              <p>
+                Local fallback mode active: import data is being persisted to in-memory runtime storage because
+                Supabase schema cache is unavailable.
+              </p>
+              <p className="mt-1">Repeatability may vary while running in fallback mode.</p>
             </div>
           ) : null}
           {phase === "error" ? (
@@ -348,7 +376,13 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
               ) : null}
             </div>
           ) : null}
+          {graphError ? (
+            <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{graphError}</div>
+          ) : null}
           {activeRepo ? <p className="text-xs text-zinc-500">Active repo: {activeRepo}</p> : null}
+          {noConsolidatedRules ? (
+            <p className="text-xs text-amber-100/90">Run Sleep Cycle to generate rules.</p>
+          ) : null}
 
           <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
             <BrainScene nodes={graph.nodes} edges={graph.edges} />

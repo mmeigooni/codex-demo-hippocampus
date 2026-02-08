@@ -22,6 +22,7 @@ import {
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
+import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 interface ConsolidateRequest {
   repo_id?: string;
@@ -45,6 +46,14 @@ function normalizeTextArray(value: unknown): string[] {
   return value
     .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter((entry) => entry.length > 0);
+}
+
+function normalizePatternKey(value: unknown): PatternKey {
+  if (typeof value === "string" && PATTERN_KEYS.includes(value as PatternKey)) {
+    return value as PatternKey;
+  }
+
+  return "review-hygiene";
 }
 
 function computeConfidence(
@@ -141,14 +150,14 @@ async function runSupabaseConsolidation({
       supabase
         .from("episodes")
         .select(
-          "id,title,what_happened,the_pattern,the_fix,why_it_matters,salience_score,triggers,source_pr_number,source_url",
+          "id,title,what_happened,pattern_key,the_pattern,the_fix,why_it_matters,salience_score,triggers,source_pr_number,source_url",
         )
         .eq("repo_id", selectedRepo.id)
         .order("created_at", { ascending: false })
         .limit(400),
       supabase
         .from("rules")
-        .select("id,title,description,triggers,source_episode_ids,confidence")
+        .select("id,rule_key,title,description,triggers,source_episode_ids,confidence")
         .eq("repo_id", selectedRepo.id)
         .order("updated_at", { ascending: false })
         .limit(200),
@@ -177,6 +186,7 @@ async function runSupabaseConsolidation({
       id: episode.id,
       title: episode.title,
       what_happened: episode.what_happened,
+      pattern_key: normalizePatternKey(episode.pattern_key),
       the_pattern: episode.the_pattern,
       the_fix: episode.the_fix,
       why_it_matters: episode.why_it_matters,
@@ -188,6 +198,7 @@ async function runSupabaseConsolidation({
 
     const existingRules: ConsolidationRuleInput[] = (rulesResponse.data ?? []).map((rule) => ({
       id: rule.id,
+      rule_key: normalizePatternKey(rule.rule_key),
       title: rule.title,
       description: rule.description,
       triggers: normalizeTextArray(rule.triggers),
@@ -221,12 +232,12 @@ async function runSupabaseConsolidation({
       emit({ type: "pattern_detected", data: pattern });
     }
 
-    const existingRulesByTitle = new Map(existingRules.map((rule) => [rule.title.toLowerCase(), rule]));
     const episodeMap = new Map(episodes.map((episode) => [episode.id, episode]));
 
     for (const rule of result.rules_to_promote) {
       const confidence = computeConfidence(rule.source_episode_ids, episodeMap);
       const payload = {
+        rule_key: rule.rule_key,
         title: rule.title,
         description: rule.description,
         triggers: rule.triggers,
@@ -234,25 +245,12 @@ async function runSupabaseConsolidation({
         confidence,
       };
 
-      const existing = existingRulesByTitle.get(rule.title.toLowerCase());
+      const { error: upsertRuleError } = await supabase
+        .from("rules")
+        .upsert({ repo_id: selectedRepo.id, ...payload }, { onConflict: "repo_id,rule_key" });
 
-      if (existing) {
-        const { error: updateError } = await supabase
-          .from("rules")
-          .update(payload)
-          .eq("id", existing.id);
-
-        if (updateError) {
-          throw new Error(updateError.message);
-        }
-      } else {
-        const { error: insertRuleError } = await supabase
-          .from("rules")
-          .insert({ repo_id: selectedRepo.id, ...payload });
-
-        if (insertRuleError) {
-          throw new Error(insertRuleError.message);
-        }
+      if (upsertRuleError) {
+        throw new Error(upsertRuleError.message);
       }
 
       emit({
@@ -374,6 +372,7 @@ async function runMemoryFallbackConsolidation({
         id: episode.id,
         title: episode.title,
         what_happened: episode.what_happened,
+        pattern_key: normalizePatternKey(episode.pattern_key),
         the_pattern: episode.the_pattern,
         the_fix: episode.the_fix,
         why_it_matters: episode.why_it_matters,
@@ -387,6 +386,7 @@ async function runMemoryFallbackConsolidation({
       .slice(0, 200)
       .map((rule) => ({
         id: rule.id,
+        rule_key: normalizePatternKey(rule.rule_key),
         title: rule.title,
         description: rule.description,
         triggers: normalizeTextArray(rule.triggers),
@@ -428,6 +428,7 @@ async function runMemoryFallbackConsolidation({
       const confidence = computeConfidence(rule.source_episode_ids, episodeMap);
       upsertRulesForRepo(selectedRepo.id, [
         {
+          rule_key: rule.rule_key,
           title: rule.title,
           description: rule.description,
           triggers: rule.triggers,

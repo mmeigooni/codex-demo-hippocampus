@@ -2,6 +2,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { createCodexThread, runWithSchema } from "@/lib/codex/client";
+import {
+  buildRuleDescriptionForKey,
+  buildRuleTitleForKey,
+  mapToPatternKey,
+  patternLabelForKey,
+  type PatternKey,
+} from "@/lib/memory/pattern-taxonomy";
 import type {
   ConsolidationEpisodeInput,
   ConsolidationModelOutput,
@@ -9,6 +16,17 @@ import type {
   ConsolidationRuleCandidate,
   ConsolidationRuleInput,
 } from "@/lib/codex/types";
+
+interface RawConsolidationRuleCandidate {
+  title: string;
+  description: string;
+  triggers: string[];
+  source_episode_ids: string[];
+}
+
+interface RawConsolidationModelOutput extends Omit<ConsolidationModelOutput, "rules_to_promote"> {
+  rules_to_promote: RawConsolidationRuleCandidate[];
+}
 
 const CONSOLIDATION_SCHEMA = {
   type: "object",
@@ -82,6 +100,10 @@ interface ConsolidateEpisodesInput {
   signal?: AbortSignal;
 }
 
+const configuredMinSupport = Number.parseInt(process.env.RULE_PROMOTION_MIN_SUPPORT ?? "2", 10);
+const RULE_PROMOTION_MIN_SUPPORT =
+  Number.isFinite(configuredMinSupport) && configuredMinSupport > 0 ? configuredMinSupport : 2;
+
 function clampSalience(score: number) {
   return Math.max(0, Math.min(10, Math.round(score)));
 }
@@ -94,43 +116,119 @@ function sanitizeTriggers(triggers: string[]) {
   return Array.from(new Set(normalized)).slice(0, 12);
 }
 
-export function sanitizeConsolidationOutput(
-  raw: ConsolidationModelOutput,
-  episodes: ConsolidationEpisodeInput[],
-): ConsolidationModelOutput {
-  const episodeIds = new Set(episodes.map((episode) => episode.id));
+function deriveRuleKey(
+  rawRule: RawConsolidationRuleCandidate,
+  sourceEpisodeIds: string[],
+  episodeMap: Map<string, ConsolidationEpisodeInput>,
+): PatternKey {
+  const supportByKey = new Map<PatternKey, number>();
 
-  const patterns = raw.patterns
-    .map((pattern) => ({
-      ...pattern,
-      name: pattern.name.trim(),
-      summary: pattern.summary.trim(),
-      episode_ids: pattern.episode_ids.filter((episodeId) => episodeIds.has(episodeId)),
-    }))
-    .filter((pattern) => pattern.name.length > 0 && pattern.summary.length > 0 && pattern.episode_ids.length > 0);
-
-  const rules = new Map<string, ConsolidationRuleCandidate>();
-  for (const rule of raw.rules_to_promote) {
-    const title = rule.title.trim();
-    const description = rule.description.trim();
-    const sourceEpisodeIds = Array.from(
-      new Set(rule.source_episode_ids.filter((episodeId) => episodeIds.has(episodeId))),
-    );
-    const triggers = sanitizeTriggers(rule.triggers);
-
-    if (title.length === 0 || description.length === 0 || sourceEpisodeIds.length === 0 || triggers.length === 0) {
+  for (const episodeId of sourceEpisodeIds) {
+    const episode = episodeMap.get(episodeId);
+    if (!episode) {
       continue;
     }
 
-    const dedupeKey = title.toLowerCase();
-    if (!rules.has(dedupeKey)) {
-      rules.set(dedupeKey, {
-        title,
-        description,
-        triggers,
+    supportByKey.set(episode.pattern_key, (supportByKey.get(episode.pattern_key) ?? 0) + 1);
+  }
+
+  if (supportByKey.size > 0) {
+    const dominant = Array.from(supportByKey.entries()).sort((left, right) => {
+      if (left[1] === right[1]) {
+        return left[0].localeCompare(right[0]);
+      }
+      return right[1] - left[1];
+    })[0];
+
+    if (dominant) {
+      return dominant[0];
+    }
+  }
+
+  return mapToPatternKey({
+    title: rawRule.title,
+    pattern: rawRule.description,
+    triggers: rawRule.triggers,
+  });
+}
+
+export function sanitizeConsolidationOutput(
+  raw: RawConsolidationModelOutput,
+  episodes: ConsolidationEpisodeInput[],
+): ConsolidationModelOutput {
+  const episodeMap = new Map(episodes.map((episode) => [episode.id, episode]));
+  const episodeIds = new Set(episodes.map((episode) => episode.id));
+
+  const patternsByKey = new Map<PatternKey, string[]>();
+  for (const episode of episodes) {
+    const existing = patternsByKey.get(episode.pattern_key) ?? [];
+    existing.push(episode.id);
+    patternsByKey.set(episode.pattern_key, existing);
+  }
+
+  const patterns = Array.from(patternsByKey.entries())
+    .sort((left, right) => {
+      if (left[1].length === right[1].length) {
+        return left[0].localeCompare(right[0]);
+      }
+      return right[1].length - left[1].length;
+    })
+    .map(([patternKey, ids]) => ({
+      name: patternLabelForKey(patternKey),
+      episode_ids: ids,
+      summary: `Recurring pattern in ${ids.length} episode(s): ${patternLabelForKey(patternKey)}`,
+    }));
+
+  const mappedModelRules = new Map<PatternKey, ConsolidationRuleCandidate>();
+  for (const rawRule of raw.rules_to_promote) {
+    const sourceEpisodeIds = Array.from(
+      new Set(rawRule.source_episode_ids.filter((episodeId) => episodeIds.has(episodeId))),
+    );
+
+    if (sourceEpisodeIds.length === 0) {
+      continue;
+    }
+
+    const ruleKey = deriveRuleKey(rawRule, sourceEpisodeIds, episodeMap);
+    const existing = mappedModelRules.get(ruleKey);
+
+    if (!existing) {
+      mappedModelRules.set(ruleKey, {
+        rule_key: ruleKey,
+        title: buildRuleTitleForKey(ruleKey),
+        description: buildRuleDescriptionForKey(ruleKey),
+        triggers: sanitizeTriggers(rawRule.triggers),
         source_episode_ids: sourceEpisodeIds,
       });
+      continue;
     }
+
+    existing.triggers = sanitizeTriggers([...existing.triggers, ...rawRule.triggers]);
+    existing.source_episode_ids = Array.from(new Set([...existing.source_episode_ids, ...sourceEpisodeIds]));
+  }
+
+  const rules = new Map<PatternKey, ConsolidationRuleCandidate>();
+
+  for (const [patternKey, ids] of patternsByKey.entries()) {
+    if (ids.length < RULE_PROMOTION_MIN_SUPPORT) {
+      continue;
+    }
+
+    const modelRule = mappedModelRules.get(patternKey);
+    const deterministicTriggers = sanitizeTriggers(
+      ids.flatMap((episodeId) => episodeMap.get(episodeId)?.triggers ?? []),
+    );
+
+    const mergedTriggers = sanitizeTriggers([...(modelRule?.triggers ?? []), ...deterministicTriggers]);
+    const ruleTriggers = mergedTriggers.length > 0 ? mergedTriggers : [patternKey];
+
+    rules.set(patternKey, {
+      rule_key: patternKey,
+      title: buildRuleTitleForKey(patternKey),
+      description: buildRuleDescriptionForKey(patternKey),
+      triggers: ruleTriggers,
+      source_episode_ids: ids,
+    });
   }
 
   const contradictionKeys = new Set<string>();
@@ -186,45 +284,6 @@ export function sanitizeConsolidationOutput(
   };
 }
 
-function buildFallbackConsolidation(episodes: ConsolidationEpisodeInput[]): ConsolidationModelOutput {
-  const groupedByPattern = new Map<string, ConsolidationEpisodeInput[]>();
-
-  for (const episode of episodes) {
-    const key = (episode.the_pattern ?? "general-review-pattern").trim().toLowerCase();
-    const bucket = groupedByPattern.get(key) ?? [];
-    bucket.push(episode);
-    groupedByPattern.set(key, bucket);
-  }
-
-  const orderedPatterns = Array.from(groupedByPattern.entries())
-    .sort((a, b) => b[1].length - a[1].length)
-    .slice(0, 5);
-
-  const patterns = orderedPatterns.map(([patternName, patternEpisodes]) => ({
-    name: patternName,
-    episode_ids: patternEpisodes.map((episode) => episode.id),
-    summary: `Recurring pattern in ${patternEpisodes.length} episode(s): ${patternName}`,
-  }));
-
-  const rulesToPromote = orderedPatterns
-    .filter(([, patternEpisodes]) => patternEpisodes.length >= 2)
-    .map(([patternName, patternEpisodes]) => ({
-      title: `Guard against ${patternName}`,
-      description: `Codify a reusable checklist to prevent ${patternName} regressions.`,
-      triggers: sanitizeTriggers(patternEpisodes.flatMap((episode) => episode.triggers)).slice(0, 6),
-      source_episode_ids: patternEpisodes.map((episode) => episode.id),
-    }))
-    .filter((rule) => rule.triggers.length > 0);
-
-  return {
-    patterns,
-    rules_to_promote: rulesToPromote,
-    contradictions: [],
-    salience_updates: [],
-    prune_candidates: [],
-  };
-}
-
 function buildPrompt(input: ConsolidateEpisodesInput, promptTemplate: string) {
   return [
     promptTemplate,
@@ -248,29 +307,21 @@ export async function consolidateEpisodes(input: ConsolidateEpisodesInput): Prom
       contradictions: [],
       salience_updates: [],
       prune_candidates: [],
-      used_fallback: true,
+      used_fallback: false,
     };
   }
 
   const promptTemplatePath = path.join(process.cwd(), ".codex/prompts/consolidate.md");
   const promptTemplate = await readFile(promptTemplatePath, "utf8");
 
-  let output: ConsolidationModelOutput;
-  let usedFallback = false;
-
-  try {
-    const thread = createCodexThread("consolidation");
-    const prompt = buildPrompt(input, promptTemplate);
-    output = await runWithSchema<ConsolidationModelOutput>(thread, prompt, CONSOLIDATION_SCHEMA, input.signal);
-  } catch {
-    output = buildFallbackConsolidation(input.episodes);
-    usedFallback = true;
-  }
+  const thread = createCodexThread("consolidation");
+  const prompt = buildPrompt(input, promptTemplate);
+  const output = await runWithSchema<RawConsolidationModelOutput>(thread, prompt, CONSOLIDATION_SCHEMA, input.signal);
 
   const sanitized = sanitizeConsolidationOutput(output, input.episodes);
 
   return {
     ...sanitized,
-    used_fallback: usedFallback,
+    used_fallback: false,
   };
 }
