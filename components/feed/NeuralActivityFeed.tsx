@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { AnimatePresence } from "motion/react";
 
 import { ActivityCard, type ActivityEventView } from "@/components/feed/ActivityCard";
-import { buildFeedRenderWindow, type SelectionSource } from "@/lib/feed/cross-selection";
+import { PRGroupCard } from "@/components/feed/PRGroupCard";
+import { activityEventMatchesNodeId, buildFeedRenderWindow, type SelectionSource } from "@/lib/feed/cross-selection";
 
 interface NeuralActivityFeedProps {
   events: ActivityEventView[];
@@ -12,6 +13,21 @@ interface NeuralActivityFeedProps {
   selectedNodeId?: string | null;
   selectionSource?: SelectionSource | null;
   onSelectEvent?: (event: ActivityEventView) => void;
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
 }
 
 export function NeuralActivityFeed({
@@ -39,7 +55,7 @@ export function NeuralActivityFeed({
       return;
     }
 
-    const selectedEvent = visibleEvents.find((event) => event.graphNodeId === selectedNodeId);
+    const selectedEvent = visibleEvents.find((event) => activityEventMatchesNodeId(event, selectedNodeId));
     if (!selectedEvent) {
       return;
     }
@@ -60,23 +76,49 @@ export function NeuralActivityFeed({
             Waiting for neural activity...
           </p>
         ) : (
-          visibleEvents.map((event, index) => (
-            <div
-              key={event.id}
-              ref={(element) => {
-                eventElementMapRef.current.set(event.id, element);
-              }}
-              data-activity-event-id={event.id}
-            >
-              <ActivityCard
-                event={event}
-                index={index}
-                selected={Boolean(selectedNodeId && event.graphNodeId === selectedNodeId)}
-                pinnedFromGraph={pinnedEventId === event.id}
-                onSelect={onSelectEvent}
-              />
-            </div>
-          ))
+          visibleEvents.map((event, index) => {
+            const groupedEpisodes = event.groupedEpisodes;
+            const selected = activityEventMatchesNodeId(event, selectedNodeId);
+
+            return (
+              <div
+                key={event.id}
+                ref={(element) => {
+                  eventElementMapRef.current.set(event.id, element);
+                }}
+                data-activity-event-id={event.id}
+              >
+                {groupedEpisodes && groupedEpisodes.length > 0 ? (
+                  <PRGroupCard
+                    prNumber={numberFromUnknown(event.raw.pr_number) ?? 0}
+                    prTitle={
+                      typeof event.raw.pr_title === "string" && event.raw.pr_title.trim().length > 0
+                        ? event.raw.pr_title
+                        : event.title
+                    }
+                    episodes={groupedEpisodes}
+                    index={index}
+                    selected={selected}
+                    pinnedFromGraph={pinnedEventId === event.id}
+                    selectedEpisodeId={
+                      selectedNodeId
+                        ? groupedEpisodes.find((episode) => activityEventMatchesNodeId(episode, selectedNodeId))?.id ?? null
+                        : null
+                    }
+                    onSelectEpisode={onSelectEvent}
+                  />
+                ) : (
+                  <ActivityCard
+                    event={event}
+                    index={index}
+                    selected={selected}
+                    pinnedFromGraph={pinnedEventId === event.id}
+                    onSelect={onSelectEvent}
+                  />
+                )}
+              </div>
+            );
+          })
         )}
       </AnimatePresence>
     </div>

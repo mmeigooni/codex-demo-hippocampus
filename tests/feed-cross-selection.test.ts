@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  activityEventMatchesNodeId,
   buildFeedRenderWindow,
   graphNodeIdFromConsolidationEvent,
   graphNodeIdFromImportEvent,
@@ -39,6 +40,19 @@ describe("cross selection helpers", () => {
     expect(episodeNodeId).toBe("episode-episode-9");
   });
 
+  it("matches selected node IDs against both graphNodeId and graphNodeIds", () => {
+    const directMatch = activityEventMatchesNodeId({ id: "evt-1", graphNodeId: "episode-1" }, "episode-1");
+    const groupedMatch = activityEventMatchesNodeId(
+      { id: "evt-2", graphNodeIds: ["episode-2", "episode-3"] },
+      "episode-3",
+    );
+    const noMatch = activityEventMatchesNodeId({ id: "evt-3", graphNodeIds: ["episode-4"] }, "episode-9");
+
+    expect(directMatch).toBe(true);
+    expect(groupedMatch).toBe(true);
+    expect(noMatch).toBe(false);
+  });
+
   it("injects and pins selected graph event when it is outside the visible window", () => {
     const events = [
       { id: "evt-1", graphNodeId: "episode-1" },
@@ -75,5 +89,24 @@ describe("cross selection helpers", () => {
 
     expect(result.pinnedEventId).toBeNull();
     expect(result.events.map((event) => event.id)).toEqual(["evt-3", "evt-2"]);
+  });
+
+  it("pins grouped events when selected node is inside graphNodeIds", () => {
+    const events = [
+      { id: "evt-1", graphNodeId: "episode-1" },
+      { id: "evt-2", graphNodeIds: ["episode-2", "episode-3"] },
+      { id: "evt-3", graphNodeId: "episode-4" },
+      { id: "evt-4", graphNodeId: "episode-5" },
+    ];
+
+    const result = buildFeedRenderWindow({
+      events,
+      maxItems: 2,
+      selectedNodeId: "episode-2",
+      source: "graph",
+    });
+
+    expect(result.pinnedEventId).toBe("evt-2");
+    expect(result.events[0]?.id).toBe("evt-2");
   });
 });
