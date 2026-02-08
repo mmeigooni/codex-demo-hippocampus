@@ -23,7 +23,7 @@ interface DreamStateProps {
 const PHASE_LABELS: Record<DreamPhase, string> = {
   idle: "Idle",
   dozing: "Dozing",
-  reasoning: "Reasoning",
+  reasoning: "Deep Thinking",
   patterning: "Detecting Patterns",
   promoting: "Promoting Rules",
   integrating: "Integrating Memory",
