@@ -12,6 +12,7 @@ import { RepoSelector } from "@/components/onboarding/RepoSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConsolidationStream } from "@/hooks/useConsolidationStream";
 import { useDistributionStream } from "@/hooks/useDistributionStream";
+import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent } from "@/lib/codex/types";
 import type { ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 
@@ -109,8 +110,12 @@ function extractEventsFromBuffer(rawBuffer: string) {
   return { events, remainder };
 }
 
-function toActivityEvent(event: ImportEvent, index: number): ActivityEventView {
+function toActivityEvent(event: ImportEvent, index: number): ActivityEventView | null {
   const prefix = `${event.type}-${index}`;
+
+  if (event.type === "replay_manifest") {
+    return null;
+  }
 
   if (event.type === "pr_found") {
     return {
@@ -193,6 +198,7 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
   const data = (event.data ?? {}) as Record<string, unknown>;
 
   if (
+    event.type === "replay_manifest" ||
     event.type === "reasoning_start" ||
     event.type === "reasoning_delta" ||
     event.type === "reasoning_complete" ||
@@ -333,8 +339,10 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [graphError, setGraphError] = useState<string | null>(null);
   const [consolidationRepoId, setConsolidationRepoId] = useState<string | null>(null);
   const [distributionRepoId, setDistributionRepoId] = useState<string | null>(null);
+  const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string> | null>(null);
   const graphRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedConsolidationEventCountRef = useRef(0);
+  const importReplaySelectionRef = useRef<ImportRepoRequest | null>(null);
 
   const {
     runConsolidation,
@@ -358,7 +366,9 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   } = useDistributionStream();
 
   const activityEvents = useMemo(() => {
-    const importActivityEvents = events.map((event, index) => toActivityEvent(event, index));
+    const importActivityEvents = events
+      .map((event, index) => toActivityEvent(event, index))
+      .filter((event): event is ActivityEventView => event !== null);
     const consolidationActivityEvents = consolidationEvents
       .map((event, index) => consolidationEventToActivity(event, index))
       .filter((event): event is ActivityEventView => event !== null);
@@ -518,6 +528,84 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     }
   }, []);
 
+  const applyImportEvents = useCallback(
+    (chunkEvents: ImportEvent[], repoSelection: ImportRepoRequest, replayMode: boolean) => {
+      const visibleEvents = chunkEvents.filter((event) => event.type !== "replay_manifest");
+      if (visibleEvents.length === 0) {
+        return;
+      }
+
+      setEvents((current) => [...current, ...visibleEvents]);
+
+      if (visibleEvents.some((event) => event.type === "encoding_error")) {
+        setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "error"));
+      }
+
+      if (replayMode) {
+        for (const event of visibleEvents) {
+          if (event.type !== "episode_created") {
+            continue;
+          }
+
+          const data = event.data as { episode?: { id?: unknown } };
+          if (typeof data.episode?.id !== "string" || data.episode.id.length === 0) {
+            continue;
+          }
+
+          const nodeId = `episode-${data.episode.id}`;
+          setVisibleNodeIds((current) => {
+            if (!current || current.has(nodeId)) {
+              return current;
+            }
+
+            const next = new Set(current);
+            next.add(nodeId);
+            return next;
+          });
+        }
+      }
+
+      if (!replayMode && visibleEvents.some((event) => event.type === "episode_created" || event.type === "complete")) {
+        void refreshGraph(repoSelection);
+      }
+
+      if (visibleEvents.some((event) => event.type === "complete")) {
+        const completeEvent = visibleEvents.findLast((event) => event.type === "complete");
+        const completeData = completeEvent?.data as Record<string, unknown> | undefined;
+        if (typeof completeData?.repo_id === "string") {
+          setActiveRepoId(completeData.repo_id);
+        }
+
+        if (replayMode) {
+          setVisibleNodeIds(null);
+        }
+
+        setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
+      }
+    },
+    [refreshGraph],
+  );
+
+  const { enqueue: enqueueImportReplay, cancel: cancelImportReplay } = useTheatricalScheduler<ImportEvent>({
+    onEventRelease: (event) => {
+      const selection = importReplaySelectionRef.current;
+      if (!selection) {
+        return;
+      }
+
+      applyImportEvents([event], selection, true);
+    },
+    onComplete: () => {
+      const selection = importReplaySelectionRef.current;
+      importReplaySelectionRef.current = null;
+      if (!selection) {
+        return;
+      }
+
+      void refreshGraph(selection);
+    },
+  });
+
   const startImport = async (repoSelection: ImportRepoRequest) => {
     setLastSelection(repoSelection);
     setActiveSelection(repoSelection);
@@ -532,9 +620,12 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       clearTimeout(graphRefreshDebounceRef.current);
       graphRefreshDebounceRef.current = null;
     }
+    cancelImportReplay();
+    importReplaySelectionRef.current = null;
     setEvents([]);
     setError(null);
     setStorageMode(null);
+    setVisibleNodeIds(null);
     setPhase("importing");
 
     await refreshGraph(repoSelection);
@@ -561,6 +652,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let streamMode: "unknown" | "live" | "replay" = "unknown";
+      const replayEvents: ImportEvent[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -574,29 +667,45 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
         if (parsed.events.length > 0) {
           const chunkEvents = parsed.events as ImportEvent[];
-          setEvents((current) => [...current, ...chunkEvents]);
-
-          if (chunkEvents.some((event) => event.type === "encoding_error")) {
-            setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "error"));
-          }
-
-          if (chunkEvents.some((event) => event.type === "episode_created" || event.type === "complete")) {
-            void refreshGraph(repoSelection);
-          }
-
-          if (chunkEvents.some((event) => event.type === "complete")) {
-            const completeEvent = chunkEvents.findLast((event) => event.type === "complete");
-            const completeData = completeEvent?.data as Record<string, unknown> | undefined;
-            if (typeof completeData?.repo_id === "string") {
-              setActiveRepoId(completeData.repo_id);
+          const replayDetected = chunkEvents.some((event) => {
+            if (event.type !== "replay_manifest") {
+              return false;
             }
-            setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
+
+            const data = event.data as Record<string, unknown>;
+            return data.mode === "import_replay";
+          });
+
+          if (streamMode === "unknown" && replayDetected) {
+            streamMode = "replay";
+            setVisibleNodeIds(new Set());
           }
+
+          if (streamMode === "replay") {
+            replayEvents.push(...chunkEvents.filter((event) => event.type !== "replay_manifest"));
+            continue;
+          }
+
+          if (streamMode === "unknown") {
+            streamMode = "live";
+          }
+
+          applyImportEvents(chunkEvents, repoSelection, false);
         }
       }
 
-      await refreshGraph(repoSelection);
-      setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
+      if (streamMode === "replay") {
+        if (replayEvents.length === 0) {
+          setVisibleNodeIds(null);
+          setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
+        } else {
+          importReplaySelectionRef.current = repoSelection;
+          enqueueImportReplay(replayEvents);
+        }
+      } else {
+        await refreshGraph(repoSelection);
+        setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
+      }
     } catch (importError) {
       const message = importError instanceof Error ? importError.message : "Import failed";
       setError(message);
@@ -728,8 +837,27 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       if (graphRefreshDebounceRef.current) {
         clearTimeout(graphRefreshDebounceRef.current);
       }
+
+      cancelImportReplay();
+      importReplaySelectionRef.current = null;
     };
-  }, []);
+  }, [cancelImportReplay]);
+
+  const displayNodes = useMemo(() => {
+    if (!visibleNodeIds) {
+      return graph.nodes;
+    }
+
+    return graph.nodes.filter((node) => visibleNodeIds.has(node.id));
+  }, [graph.nodes, visibleNodeIds]);
+
+  const displayEdges = useMemo(() => {
+    if (!visibleNodeIds) {
+      return graph.edges;
+    }
+
+    return graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target));
+  }, [graph.edges, visibleNodeIds]);
 
   const noConsolidatedRules = activeSelection && !graphLoading && graph.stats.ruleCount === 0;
 
@@ -786,7 +914,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           ) : null}
 
           <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-            <BrainScene nodes={graph.nodes} edges={graph.edges} />
+            <BrainScene nodes={displayNodes} edges={displayEdges} layoutNodes={graph.nodes} layoutEdges={graph.edges} />
             <div className="max-h-[440px] overflow-auto pr-1">
               <NeuralActivityFeed events={activityEvents} maxItems={14} />
             </div>
