@@ -6,7 +6,7 @@ vi.mock("octokit", () => {
   class Octokit {
     request = requestMock;
 
-    constructor(_: unknown) {}
+    constructor() {}
   }
 
   return {
