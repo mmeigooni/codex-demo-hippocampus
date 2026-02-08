@@ -6,6 +6,8 @@ import dynamic from "next/dynamic";
 import type { BrainEdgeModel, BrainNodeModel } from "@/components/brain/types";
 import { NeuralActivityFeed } from "@/components/feed/NeuralActivityFeed";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
+import { ConsolidationCTA } from "@/components/onboarding/ConsolidationCTA";
+import { DistributionCTA } from "@/components/onboarding/DistributionCTA";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConsolidationStream } from "@/hooks/useConsolidationStream";
@@ -431,6 +433,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   ]);
 
   const statusText = useMemo(() => {
+    const activeError = error ?? consolidationError ?? distributionResult?.error ?? null;
+
     if (phase === "importing") {
       if (events.length === 0) {
         return "Preparing import. Verifying repository access and scanning merged pull requests.";
@@ -464,12 +468,40 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       return `Import complete. ${total} episodes created.`;
     }
 
+    if (phase === "consolidating") {
+      return "Consolidating memories...";
+    }
+
+    if (phase === "consolidated") {
+      return "Consolidation complete. Ready to distribute.";
+    }
+
+    if (phase === "distributing") {
+      return "Distributing to repo...";
+    }
+
+    if (phase === "distributed") {
+      if (distributionResult?.error) {
+        return distributionResult.error;
+      }
+
+      if (distributionResult?.prUrl) {
+        return `Distribution complete. PR #${distributionResult.prNumber ?? "?"} created.`;
+      }
+
+      if (distributionResult?.skippedPr) {
+        return "Distribution preview generated. Open a PR manually.";
+      }
+
+      return "Distribution complete.";
+    }
+
     if (phase === "error") {
-      return error ?? "Import encountered an error.";
+      return activeError ?? "Workflow encountered an error.";
     }
 
     return "Select a repository to begin.";
-  }, [events, error, phase]);
+  }, [consolidationError, distributionResult, error, events, phase]);
 
   const refreshGraph = useCallback(async (repoSelection: ImportRepoRequest) => {
     setGraphLoading(true);
@@ -706,7 +738,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       <RepoSelector
         demoRepoFullName={demoRepoFullName}
         onSelectRepo={startImport}
-        disabled={phase === "importing"}
+        disabled={phase === "importing" || phase === "consolidating" || phase === "distributing"}
       />
 
       <Card className="border-zinc-800 bg-zinc-900/40">
@@ -761,6 +793,31 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           </div>
         </CardContent>
       </Card>
+
+      {PHASE_ORDER[phase] >= PHASE_ORDER.ready ? (
+        <ConsolidationCTA
+          phase={phase}
+          dreamPhase={consolidationPhase}
+          onRun={handleRunConsolidation}
+          isRunning={isConsolidating}
+          progress={consolidationProgress}
+          reasoningText={reasoningText}
+          isReasoningActive={isReasoningActive}
+          error={phase === "error" ? error : null}
+        />
+      ) : null}
+
+      {PHASE_ORDER[phase] >= PHASE_ORDER.consolidated ? (
+        <DistributionCTA
+          phase={phase}
+          onDistribute={handleRunDistribution}
+          isDistributing={isDistributing}
+          distributionResult={distributionResult}
+          distributionPhase={distributionPhase}
+          onCopyMarkdown={copyDistributionMarkdown}
+          copiedMarkdown={copiedMarkdown}
+        />
+      ) : null}
     </div>
   );
 }
