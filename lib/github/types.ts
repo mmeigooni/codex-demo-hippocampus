@@ -70,6 +70,7 @@ export interface ImportEpisodeSummary {
   salience_score: number;
   pattern_key: PatternKey;
   the_pattern: string;
+  why_it_matters?: string;
   triggers: string[];
 }
 
