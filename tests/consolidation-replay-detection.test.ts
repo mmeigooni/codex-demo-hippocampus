@@ -130,6 +130,7 @@ beforeEach(() => {
   mockListEpisodesForRepo.mockReturnValue(BASE_EPISODES);
   mockListRulesForRepo.mockReturnValue(BASE_RULES);
   mockCreateConsolidationRun.mockReturnValue({ id: "run-live" });
+  mockUpsertRulesForRepo.mockReturnValue(BASE_RULES);
 
   mockConsolidateEpisodes.mockResolvedValue({
     patterns: REPLAY_PACK.patterns,
@@ -175,6 +176,9 @@ describe("POST /api/consolidate replay detection", () => {
     expect(types).toContain("rule_promoted");
     expect(types).toContain("consolidation_complete");
 
+    const promotedRuleEvent = events.find((event) => event.type === "rule_promoted");
+    expect(promotedRuleEvent?.data.rule_id).toBe("rule-1");
+
     expect(mockConsolidateEpisodes).not.toHaveBeenCalled();
     expect(mockCreateConsolidationRun).not.toHaveBeenCalled();
   });
@@ -203,6 +207,8 @@ describe("POST /api/consolidate replay detection", () => {
     expect(types).not.toContain("replay_manifest");
     expect(types).toContain("consolidation_start");
     expect(types).toContain("consolidation_complete");
+    const promotedRuleEvent = events.find((event) => event.type === "rule_promoted");
+    expect(promotedRuleEvent?.data.rule_id).toBe("rule-1");
     expect(mockConsolidateEpisodes).toHaveBeenCalledTimes(1);
     expect(mockCreateConsolidationRun).toHaveBeenCalledTimes(1);
   });
@@ -255,6 +261,8 @@ describe("POST /api/consolidate replay detection", () => {
 
     expect(types).not.toContain("replay_manifest");
     expect(types).toContain("consolidation_complete");
+    const promotedRuleEvent = events.find((event) => event.type === "rule_promoted");
+    expect(promotedRuleEvent?.data.rule_id).toBe("rule-1");
     expect(mockConsolidateEpisodes).toHaveBeenCalledTimes(1);
   });
 });

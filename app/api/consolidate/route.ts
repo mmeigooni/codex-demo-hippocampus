@@ -176,6 +176,18 @@ function extractReplaySummary(summary: unknown) {
   };
 }
 
+function resolveReplayRuleId(rule: Record<string, unknown>, existingRules: ConsolidationRuleInput[]) {
+  if (typeof rule.rule_id === "string" && rule.rule_id.length > 0) {
+    return rule.rule_id;
+  }
+
+  if (typeof rule.rule_key !== "string" || rule.rule_key.length === 0) {
+    return null;
+  }
+
+  return existingRules.find((existingRule) => existingRule.rule_key === rule.rule_key)?.id ?? null;
+}
+
 function emitConsolidationReplay({
   emit,
   runId,
@@ -183,6 +195,7 @@ function emitConsolidationReplay({
   repoFullName,
   episodeCount,
   existingRuleCount,
+  existingRules,
   replaySummary,
 }: {
   emit: Emit;
@@ -191,6 +204,7 @@ function emitConsolidationReplay({
   repoFullName: string;
   episodeCount: number;
   existingRuleCount: number;
+  existingRules: ConsolidationRuleInput[];
   replaySummary: ReturnType<typeof extractReplaySummary>;
 }) {
   if (!replaySummary) {
@@ -233,11 +247,13 @@ function emitConsolidationReplay({
   }
 
   for (const rule of replaySummary.pack.rules_to_promote) {
+    const ruleId = resolveReplayRuleId(rule, existingRules);
     emit({
       type: "rule_promoted",
       data: {
         ...rule,
         confidence: Number(rule.confidence ?? 0),
+        ...(ruleId ? { rule_id: ruleId } : {}),
       },
     });
   }
@@ -354,9 +370,10 @@ async function runSupabaseConsolidation({
     const replaySummary = extractReplaySummary(existingRun?.summary);
 
     if (existingRun?.id && replaySummary) {
-      const [episodeCountResponse, ruleCountResponse] = await Promise.all([
+      const [episodeCountResponse, ruleCountResponse, existingRulesResponse] = await Promise.all([
         supabase.from("episodes").select("id", { count: "exact", head: true }).eq("repo_id", selectedRepo.id),
         supabase.from("rules").select("id", { count: "exact", head: true }).eq("repo_id", selectedRepo.id),
+        supabase.from("rules").select("id,rule_key").eq("repo_id", selectedRepo.id).limit(400),
       ]);
 
       if (episodeCountResponse.error) {
@@ -367,6 +384,20 @@ async function runSupabaseConsolidation({
         throw new Error(ruleCountResponse.error.message);
       }
 
+      if (existingRulesResponse.error) {
+        throw new Error(existingRulesResponse.error.message);
+      }
+
+      const existingRulesForReplay: ConsolidationRuleInput[] = (existingRulesResponse.data ?? []).map((rule) => ({
+        id: rule.id,
+        rule_key: normalizePatternKey(rule.rule_key),
+        title: "",
+        description: "",
+        triggers: [],
+        source_episode_ids: [],
+        confidence: 0,
+      }));
+
       const replayed = emitConsolidationReplay({
         emit,
         runId: existingRun.id,
@@ -374,6 +405,7 @@ async function runSupabaseConsolidation({
         repoFullName: selectedRepo.full_name,
         episodeCount: Number(episodeCountResponse.count ?? 0),
         existingRuleCount: Number(ruleCountResponse.count ?? 0),
+        existingRules: existingRulesForReplay,
         replaySummary,
       });
 
@@ -502,7 +534,7 @@ async function runSupabaseConsolidation({
       emit({ type: "pattern_detected", data: pattern });
     }
 
-    const promotedRulesForSummary: Array<ConsolidationRuleCandidate & { confidence: number }> = [];
+    const promotedRulesForSummary: Array<ConsolidationRuleCandidate & { confidence: number; rule_id?: string }> = [];
     const episodeMap = new Map(episodes.map((episode) => [episode.id, episode]));
 
     for (const rule of result.rules_to_promote) {
@@ -515,21 +547,28 @@ async function runSupabaseConsolidation({
         source_episode_ids: rule.source_episode_ids,
         confidence,
       };
-      promotedRulesForSummary.push(payload);
-
-      const { error: upsertRuleError } = await supabase
+      const { data: upsertedRule, error: upsertRuleError } = await supabase
         .from("rules")
-        .upsert({ repo_id: selectedRepo.id, ...payload }, { onConflict: "repo_id,rule_key" });
+        .upsert({ repo_id: selectedRepo.id, ...payload }, { onConflict: "repo_id,rule_key" })
+        .select("id")
+        .single();
 
       if (upsertRuleError) {
         throw new Error(upsertRuleError.message);
       }
+
+      const promotedRuleForSummary = {
+        ...payload,
+        ...(upsertedRule?.id ? { rule_id: upsertedRule.id } : {}),
+      };
+      promotedRulesForSummary.push(promotedRuleForSummary);
 
       emit({
         type: "rule_promoted",
         data: {
           ...rule,
           confidence,
+          ...(upsertedRule?.id ? { rule_id: upsertedRule.id } : {}),
         },
       });
     }
@@ -683,6 +722,7 @@ async function runMemoryFallbackConsolidation({
         repoFullName: selectedRepo.full_name,
         episodeCount: episodes.length,
         existingRuleCount: existingRules.length,
+        existingRules,
         replaySummary,
       });
 
@@ -753,7 +793,7 @@ async function runMemoryFallbackConsolidation({
       emit({ type: "pattern_detected", data: pattern });
     }
 
-    const promotedRulesForSummary: Array<ConsolidationRuleCandidate & { confidence: number }> = [];
+    const promotedRulesForSummary: Array<ConsolidationRuleCandidate & { confidence: number; rule_id?: string }> = [];
     const episodeMap = new Map(episodes.map((episode) => [episode.id, episode]));
 
     for (const rule of result.rules_to_promote) {
@@ -766,15 +806,19 @@ async function runMemoryFallbackConsolidation({
         source_episode_ids: rule.source_episode_ids,
         confidence,
       };
-      promotedRulesForSummary.push(promotedRule);
-
-      upsertRulesForRepo(selectedRepo.id, [
+      const upsertedRules = upsertRulesForRepo(selectedRepo.id, [
         promotedRule,
       ]);
+      const ruleId = upsertedRules.find((storedRule) => storedRule.rule_key === promotedRule.rule_key)?.id;
+      const promotedRuleForSummary = {
+        ...promotedRule,
+        ...(ruleId ? { rule_id: ruleId } : {}),
+      };
+      promotedRulesForSummary.push(promotedRuleForSummary);
 
       emit({
         type: "rule_promoted",
-        data: promotedRule,
+        data: promotedRuleForSummary,
       });
     }
 
