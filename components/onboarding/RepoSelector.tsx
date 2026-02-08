@@ -24,6 +24,7 @@ function parseFullName(fullName: string) {
 
 export function RepoSelector({ demoRepoFullName, onSelectRepo, disabled = false }: RepoSelectorProps) {
   const [loadingRepos, setLoadingRepos] = useState(false);
+  const [hasLoadedRepos, setHasLoadedRepos] = useState(false);
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [repoError, setRepoError] = useState<string | null>(null);
   const [selectedFullName, setSelectedFullName] = useState<string>("");
@@ -32,6 +33,7 @@ export function RepoSelector({ demoRepoFullName, onSelectRepo, disabled = false 
 
   const loadRepos = async () => {
     setLoadingRepos(true);
+    setHasLoadedRepos(true);
     setRepoError(null);
 
     try {
@@ -123,7 +125,7 @@ export function RepoSelector({ demoRepoFullName, onSelectRepo, disabled = false 
             Import selected repository
           </Button>
 
-          {!loadingRepos && repos.length === 0 && !repoError ? (
+          {!loadingRepos && hasLoadedRepos && repos.length === 0 && !repoError ? (
             <p className="text-xs text-zinc-500">
               No public repositories found for this account.
             </p>
