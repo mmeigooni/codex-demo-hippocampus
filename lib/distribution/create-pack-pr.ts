@@ -138,7 +138,10 @@ export async function createPackPR(
       branch,
       sha: existingSha ?? undefined,
     });
-    progress?.onFileCommitted?.(commitResponse.data.commit.sha);
+    const commitSha = commitResponse.data.commit.sha;
+    if (commitSha) {
+      progress?.onFileCommitted?.(commitSha);
+    }
 
     progress?.onPRCreating?.();
     const pullResponse = await octokit.request("POST /repos/{owner}/{repo}/pulls", {
@@ -150,7 +153,6 @@ export async function createPackPR(
       head: branch,
     });
 
-    const commitSha = commitResponse.data.commit.sha;
     const prUrl = pullResponse.data.html_url;
 
     if (!commitSha || !prUrl) {
