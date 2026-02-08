@@ -21,6 +21,7 @@ function getCodexClient() {
 }
 
 export type CodexModelTier = "nano" | "mini" | "consolidation";
+type SupportedReasoningEffort = "minimal" | "low" | "medium" | "high";
 
 function resolveModel(tier: CodexModelTier) {
   if (tier === "nano") {
@@ -34,11 +35,21 @@ function resolveModel(tier: CodexModelTier) {
   return DEFAULT_MODEL;
 }
 
+function resolveReasoningEffort(tier: CodexModelTier): SupportedReasoningEffort {
+  if (tier === "consolidation") {
+    return "high";
+  }
+
+  return "medium";
+}
+
 export function createCodexThread(tier: CodexModelTier = "mini") {
   const client = getCodexClient();
 
   return client.startThread({
     model: resolveModel(tier),
+    // Override global Codex config values (for example `xhigh`) with model-supported values.
+    modelReasoningEffort: resolveReasoningEffort(tier),
     workingDirectory: process.cwd(),
     skipGitRepoCheck: false,
     approvalPolicy: "never",
