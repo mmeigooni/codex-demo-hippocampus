@@ -21,4 +21,7 @@ pnpm-debug.log*
 # Codex worktrees
 .worktrees/
 
+# Supabase local temp cache
+supabase/.temp/
+
 *.tsbuildinfo
