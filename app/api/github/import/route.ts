@@ -17,11 +17,13 @@ import {
   PRIVATE_REPOS_NOT_SUPPORTED_MESSAGE,
 } from "@/lib/github/public-only-policy";
 import {
-  assertProfilesSchemaReady,
   isProfilesSchemaNotReadyError,
+  resolveStorageModeAfterProfilesPreflight,
   SCHEMA_NOT_READY_PROFILES_CODE,
+  type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
+import { insertEpisodeForRepo, upsertRepoForUser } from "@/lib/fallback/runtime-memory-store";
 
 function buildSseMessage(event: ImportEvent) {
   return `data: ${JSON.stringify(event)}\n\n`;
@@ -64,6 +66,36 @@ async function ensureProfileId(
   return createdProfile.id;
 }
 
+async function ensureSupabaseRepoId(
+  user: ProfileUserContext,
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  owner: string,
+  repo: string,
+) {
+  const profileId = await ensureProfileId(user, supabase);
+  const fullName = `${owner}/${repo}`;
+  const { data: repoRecord, error: repoError } = await supabase
+    .from("repos")
+    .upsert(
+      {
+        owner,
+        name: repo,
+        full_name: fullName,
+        source: "github",
+        connected_by_profile_id: profileId,
+      },
+      { onConflict: "full_name" },
+    )
+    .select("id")
+    .single();
+
+  if (repoError || !repoRecord?.id) {
+    throw new Error(repoError?.message ?? "Failed to create repository record");
+  }
+
+  return repoRecord.id;
+}
+
 export async function POST(request: Request) {
   let body: Partial<ImportRepoRequest>;
 
@@ -91,14 +123,20 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const providerToken = sessionResult.data.session?.provider_token;
-  if (!providerToken) {
+  const providerToken = sessionResult.data.session?.provider_token ?? null;
+  const canUseAnonymousGithub = process.env.NODE_ENV !== "production";
+
+  if (!providerToken && !canUseAnonymousGithub) {
     return Response.json(
       {
         error: MISSING_PROVIDER_TOKEN_MESSAGE,
       },
       { status: 400 },
     );
+  }
+
+  if (!providerToken && canUseAnonymousGithub) {
+    console.warn("[import] provider_token missing; using anonymous GitHub API access in local/dev mode");
   }
   const userContext: ProfileUserContext = {
     id: user.id,
@@ -107,7 +145,7 @@ export async function POST(request: Request) {
   };
 
   try {
-    const targetRepo = await fetchRepo(owner, repo, providerToken);
+    const targetRepo = await fetchRepo(owner, repo, providerToken ?? undefined);
     if (isPrivateRepo(targetRepo)) {
       return Response.json(
         {
@@ -121,8 +159,10 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status: 400 });
   }
 
+  let storageMode: StorageMode;
+
   try {
-    await assertProfilesSchemaReady(supabase);
+    storageMode = await resolveStorageModeAfterProfilesPreflight(supabase);
   } catch (error) {
     if (isProfilesSchemaNotReadyError(error)) {
       return Response.json(
@@ -147,29 +187,17 @@ export async function POST(request: Request) {
       };
 
       try {
-        const profileId = await ensureProfileId(userContext, supabase);
+        const repoRecordId =
+          storageMode === "supabase"
+            ? await ensureSupabaseRepoId(userContext, supabase, owner, repo)
+            : upsertRepoForUser({
+                userId: user.id,
+                owner,
+                name: repo,
+                fullName: `${owner}/${repo}`,
+              }).id;
 
-        const fullName = `${owner}/${repo}`;
-        const { data: repoRecord, error: repoError } = await supabase
-          .from("repos")
-          .upsert(
-            {
-              owner,
-              name: repo,
-              full_name: fullName,
-              source: "github",
-              connected_by_profile_id: profileId,
-            },
-            { onConflict: "full_name" },
-          )
-          .select("id")
-          .single();
-
-        if (repoError || !repoRecord?.id) {
-          throw new Error(repoError?.message ?? "Failed to create repository record");
-        }
-
-        const pullRequests = await fetchMergedPRs(owner, repo, 20, providerToken);
+        const pullRequests = await fetchMergedPRs(owner, repo, 20, providerToken ?? undefined);
         emit({ type: "pr_found", data: { count: pullRequests.length } });
 
         let created = 0;
@@ -185,8 +213,8 @@ export async function POST(request: Request) {
 
           try {
             const [reviews, diff] = await Promise.all([
-              fetchPRReviews(owner, repo, pr.number, providerToken),
-              fetchPRDiff(owner, repo, pr.number, providerToken),
+              fetchPRReviews(owner, repo, pr.number, providerToken ?? undefined),
+              fetchPRDiff(owner, repo, pr.number, providerToken ?? undefined),
             ]);
 
             const reviewComments = reviews.flatMap((review) => {
@@ -210,18 +238,35 @@ export async function POST(request: Request) {
               snippets: snippets.map((snippet) => snippet.text),
             });
 
-            const { data: insertedEpisode, error: insertError } = await supabase
-              .from("episodes")
-              .insert({
-                repo_id: repoRecord.id,
-                ...encoded.episode,
-              })
-              .select("id,title,source_pr_number,salience_score,the_pattern,triggers")
-              .single();
+            const insertedEpisode =
+              storageMode === "supabase"
+                ? await (async () => {
+                    const { data, error: insertError } = await supabase
+                      .from("episodes")
+                      .insert({
+                        repo_id: repoRecordId,
+                        ...encoded.episode,
+                      })
+                      .select("id,title,source_pr_number,salience_score,the_pattern,triggers")
+                      .single();
 
-            if (insertError || !insertedEpisode) {
-              throw new Error(insertError?.message ?? "Failed to create encoded episode");
-            }
+                    if (insertError || !data) {
+                      throw new Error(insertError?.message ?? "Failed to create encoded episode");
+                    }
+
+                    return data;
+                  })()
+                : (() => {
+                    const episode = insertEpisodeForRepo(repoRecordId, encoded.episode);
+                    return {
+                      id: episode.id,
+                      title: episode.title,
+                      source_pr_number: episode.source_pr_number,
+                      salience_score: episode.salience_score,
+                      the_pattern: episode.the_pattern,
+                      triggers: episode.triggers,
+                    };
+                  })();
 
             created += 1;
             emit({
@@ -264,6 +309,7 @@ export async function POST(request: Request) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "x-hippocampus-storage-mode": storageMode,
     },
   });
 }
