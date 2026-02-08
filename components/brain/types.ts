@@ -6,6 +6,7 @@ export interface BrainNodeModel {
   label: string;
   salience: number;
   triggers: string[];
+  ruleId?: string;
 }
 
 export interface BrainEdgeModel {
@@ -17,4 +18,9 @@ export interface BrainEdgeModel {
 
 export interface PositionedBrainNode extends BrainNodeModel {
   position: [number, number, number];
+}
+
+export interface CrossSelectionState {
+  selectedNodeId: string | null;
+  source: "feed" | "graph";
 }
