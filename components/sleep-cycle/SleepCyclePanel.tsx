@@ -6,6 +6,7 @@ import type { ConsolidationEvent, ConsolidationEventType } from "@/lib/codex/typ
 import type { ConsolidationModelOutput } from "@/lib/codex/types";
 import { parseJsonSseBuffer } from "@/lib/sse/parse";
 import { DreamState, type DreamPhase } from "@/components/sleep-cycle/DreamState";
+import { PackOutputView } from "@/components/sleep-cycle/PackOutputView";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -160,10 +161,7 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
     [repos, selectedRepoId],
   );
 
-  const rulePreview = useMemo(() => {
-    const rules = summary?.pack?.rules_to_promote ?? [];
-    return rules.slice(0, 4);
-  }, [summary]);
+  const livePack = useMemo(() => summary?.pack ?? null, [summary]);
 
   const runConsolidation = async () => {
     if (!selectedRepoId) {
@@ -313,23 +311,11 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
 
       <Card className="border-zinc-800 bg-zinc-900/40">
         <CardHeader>
-          <CardTitle className="text-zinc-100">Promoted rule preview</CardTitle>
-          <CardDescription>Latest promoted rules from the current consolidation run.</CardDescription>
+          <CardTitle className="text-zinc-100">Pack output</CardTitle>
+          <CardDescription>Promoted rules, contradictions, and salience deltas from this run.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {rulePreview.length === 0 ? (
-            <p className="text-sm text-zinc-400">No promoted rules yet. Run a sleep cycle to generate output.</p>
-          ) : (
-            rulePreview.map((rule, index) => (
-              <article
-                key={`${String(rule.title ?? "rule")}-${index}`}
-                className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3"
-              >
-                <h4 className="text-sm font-semibold text-zinc-100">{String(rule.title ?? "Untitled rule")}</h4>
-                <p className="mt-1 text-xs text-zinc-300">{String(rule.description ?? "No description.")}</p>
-              </article>
-            ))
-          )}
+        <CardContent>
+          <PackOutputView pack={livePack} />
         </CardContent>
       </Card>
 
