@@ -20,27 +20,32 @@ function buildSseMessage(event: ImportEvent) {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
 
-async function ensureProfileId(userId: string, supabase: Awaited<ReturnType<typeof createServerClient>>) {
+interface ProfileUserContext {
+  id: string;
+  githubUsername: string | null;
+  avatarUrl: string | null;
+}
+
+async function ensureProfileId(
+  user: ProfileUserContext,
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+) {
   const { data: existingProfile } = await supabase
     .from("profiles")
     .select("id")
-    .eq("user_id", userId)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (existingProfile?.id) {
     return existingProfile.id;
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const { data: createdProfile, error } = await supabase
     .from("profiles")
     .insert({
-      user_id: userId,
-      github_username: user?.user_metadata?.user_name ?? user?.user_metadata?.preferred_username ?? null,
-      avatar_url: user?.user_metadata?.avatar_url ?? null,
+      user_id: user.id,
+      github_username: user.githubUsername,
+      avatar_url: user.avatarUrl,
     })
     .select("id")
     .single();
@@ -53,6 +58,39 @@ async function ensureProfileId(userId: string, supabase: Awaited<ReturnType<type
 }
 
 export async function POST(request: Request) {
+  let body: Partial<ImportRepoRequest>;
+
+  try {
+    body = (await request.json()) as Partial<ImportRepoRequest>;
+  } catch {
+    return Response.json({ error: "Invalid request payload" }, { status: 400 });
+  }
+
+  const owner = body.owner?.trim();
+  const repo = body.repo?.trim();
+
+  if (!owner || !repo) {
+    return Response.json({ error: "owner and repo are required" }, { status: 400 });
+  }
+
+  const supabase = await createServerClient();
+  const [userResult, sessionResult] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.auth.getSession(),
+  ]);
+
+  const user = userResult.data.user;
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const providerToken = sessionResult.data.session?.provider_token ?? getFallbackGitHubToken() ?? undefined;
+  const userContext: ProfileUserContext = {
+    id: user.id,
+    githubUsername: user.user_metadata?.user_name ?? user.user_metadata?.preferred_username ?? null,
+    avatarUrl: user.user_metadata?.avatar_url ?? null,
+  };
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -62,35 +100,7 @@ export async function POST(request: Request) {
       };
 
       try {
-        const body = (await request.json()) as Partial<ImportRepoRequest>;
-        const owner = body.owner?.trim();
-        const repo = body.repo?.trim();
-
-        if (!owner || !repo) {
-          emit({ type: "encoding_error", data: { message: "owner and repo are required" } });
-          emit({ type: "complete", data: { total: 0 } });
-          controller.close();
-          return;
-        }
-
-        const supabase = await createServerClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (!user) {
-          emit({ type: "encoding_error", data: { message: "Unauthorized" } });
-          emit({ type: "complete", data: { total: 0 } });
-          controller.close();
-          return;
-        }
-
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        const providerToken = session?.provider_token ?? getFallbackGitHubToken() ?? undefined;
-        const profileId = await ensureProfileId(user.id, supabase);
+        const profileId = await ensureProfileId(userContext, supabase);
 
         const fullName = `${owner}/${repo}`;
         const { data: repoRecord, error: repoError } = await supabase
@@ -189,18 +199,14 @@ export async function POST(request: Request) {
         }
 
         emit({ type: "complete", data: { total: created } });
-        controller.close();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unexpected import error";
-        controller.enqueue(
-          encoder.encode(
-            buildSseMessage({
-              type: "encoding_error",
-              data: { message },
-            }),
-          ),
-        );
-        controller.enqueue(encoder.encode(buildSseMessage({ type: "complete", data: { total: 0 } })));
+        emit({
+          type: "encoding_error",
+          data: { message },
+        });
+        emit({ type: "complete", data: { total: 0 } });
+      } finally {
         controller.close();
       }
     },

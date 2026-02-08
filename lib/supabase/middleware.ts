@@ -14,6 +14,14 @@ function getSupabasePublicConfig() {
   return { url, key };
 }
 
+const PROTECTED_PATH_PREFIXES = ["/dashboard", "/episodes", "/sleep-cycle"];
+
+function isProtectedPath(pathname: string) {
+  return PROTECTED_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export async function updateSession(request: NextRequest) {
   const { url, key } = getSupabasePublicConfig();
 
@@ -38,9 +46,9 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isDashboardRoute = request.nextUrl.pathname.startsWith("/dashboard");
+  const isProtectedRoute = isProtectedPath(request.nextUrl.pathname);
 
-  if (!user && isDashboardRoute) {
+  if (!user && isProtectedRoute) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

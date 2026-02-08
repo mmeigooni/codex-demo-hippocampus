@@ -10,17 +10,18 @@ function getFallbackGitHubToken() {
 export async function GET() {
   try {
     const supabase = await createServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const [userResult, sessionResult] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase.auth.getSession(),
+    ]);
+
+    const user = userResult.data.user;
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const session = sessionResult.data.session;
 
     const providerToken = session?.provider_token ?? getFallbackGitHubToken();
 
