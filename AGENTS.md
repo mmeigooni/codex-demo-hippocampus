@@ -16,8 +16,7 @@ Hippocampus is a shared memory layer for Codex teams. It ingests pull requests, 
 - `lib/`: integrations and domain logic (`supabase`, `github`, `codex`).
 - `supabase/migrations/`: SQL schema and migration files.
 - `.codex/prompts/`: reusable Codex prompt templates.
-- `docs/waves/`: per-wave docs checks and review notes.
-- `docs/research/`: spike and best-practice findings.
+- `docs/` (local-only, gitignored): wave docs passes, brainstorms, and research notes.
 
 ## Decision highlights
 - Hybrid encoder: deterministic metadata + LLM judgment.

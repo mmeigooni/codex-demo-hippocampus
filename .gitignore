@@ -24,4 +24,7 @@ pnpm-debug.log*
 # Supabase local temp cache
 supabase/.temp/
 
+# Local-only planning/research artifacts
+/docs/
+
 *.tsbuildinfo
