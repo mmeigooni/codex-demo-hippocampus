@@ -62,7 +62,7 @@ describe("encodeEpisode", () => {
     vi.mocked(runWithSchema).mockReset();
   });
 
-  it("normalizes salience and triggers from schema output", async () => {
+  it("calibrates salience by pattern and normalizes triggers from schema output", async () => {
     vi.mocked(runWithSchema).mockResolvedValueOnce({
       what_happened: "Retries were unbounded",
       the_pattern: "unbounded-retry",
@@ -74,7 +74,7 @@ describe("encodeEpisode", () => {
 
     const result = await encodeEpisode(input);
 
-    expect(result.episode.salience_score).toBe(10);
+    expect(result.episode.salience_score).toBe(9);
     expect(result.episode.triggers).toEqual(["retry", "payments"]);
     expect(result.episode.pattern_key).toBe("retry-strategy");
     expect(result.episode.the_pattern).toBe("Retry strategy");

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { createCodexThread, runWithSchema } from "@/lib/codex/client";
+import { calibrateInitialSalience, clampSalienceScore } from "@/lib/codex/salience-policy";
 import { mapToPatternKey, patternLabelForKey } from "@/lib/memory/pattern-taxonomy";
 import type {
   EncodedEpisodeResult,
@@ -34,10 +35,6 @@ const ENCODE_EPISODE_SCHEMA = {
   ],
   additionalProperties: false,
 } as const;
-
-function clampSalience(score: number) {
-  return Math.max(0, Math.min(10, Math.round(score)));
-}
 
 function sanitizeTriggers(triggers: string[]) {
   const compact = triggers
@@ -123,7 +120,12 @@ export async function encodeEpisode(input: EpisodeEncodingInput): Promise<Encode
   narrative = {
     ...narrative,
     the_pattern: canonicalPatternLabel,
-    salience_score: clampSalience(narrative.salience_score),
+    salience_score: clampSalienceScore(
+      calibrateInitialSalience({
+        rawScore: narrative.salience_score,
+        patternKey,
+      }),
+    ),
     triggers: sanitizeTriggers(narrative.triggers),
   };
 
