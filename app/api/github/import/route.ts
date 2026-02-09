@@ -120,7 +120,8 @@ async function listSupabaseEpisodeSummariesForPrNumbers(
     .from("episodes")
     .select("id,title,source_pr_number,salience_score,pattern_key,the_pattern,why_it_matters,triggers")
     .eq("repo_id", repoId)
-    .in("source_pr_number", prNumbers);
+    .in("source_pr_number", prNumbers)
+    .order("updated_at", { ascending: false });
 
   if (error) {
     throw new Error(error.message);

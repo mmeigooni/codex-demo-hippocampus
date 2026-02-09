@@ -180,6 +180,13 @@ export function groupImportActivityEvents(importActivityEvents: ActivityEventVie
       continue;
     }
 
+    // Keep single-episode imports as episode cards to avoid collapsing all activity into PR wrappers.
+    if (episodes.length === 1) {
+      grouped.push(episodes[0]!);
+      index = cursor;
+      continue;
+    }
+
     const salienceValues = episodes
       .map((episode) => episode.salience)
       .filter((salience): salience is number => typeof salience === "number");
