@@ -10,6 +10,7 @@ import type {
   BrainNodeModel,
   PositionedBrainNode,
 } from "@/components/brain/types";
+import { getColorFamilyForEpisode, getColorFamilyForRule } from "@/lib/color/cluster-palette";
 
 interface BrainGraphProps {
   nodes: BrainNodeModel[];
@@ -139,18 +140,25 @@ export function BrainGraph({
 
   const effectiveSelectedId = externalSelectedNodeId ?? selectedNodeId;
   const selectedNode = positionedNodes.find((node) => node.id === effectiveSelectedId) ?? null;
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   return (
     <group>
       {edges.map((edge) => {
         const source = positions.get(edge.source);
         const target = positions.get(edge.target);
+        const sourceNode = nodeById.get(edge.source);
 
         if (!source || !target) {
           return null;
         }
 
-        return <NeuralEdge key={edge.id} from={source} to={target} weight={edge.weight} />;
+        const edgeColor =
+          sourceNode?.type === "rule"
+            ? getColorFamilyForRule(edge.source).border
+            : getColorFamilyForEpisode(edge.source).border;
+
+        return <NeuralEdge key={edge.id} from={source} to={target} weight={edge.weight} color={edgeColor} />;
       })}
 
       {positionedNodes.map((node) => {
@@ -180,6 +188,7 @@ export function BrainGraph({
           return (
             <RuleNode
               key={node.id}
+              nodeId={node.id}
               position={node.position}
               selected={isSelected || isHovered}
               onHover={onHover}
@@ -191,6 +200,7 @@ export function BrainGraph({
         return (
           <EpisodeNode
             key={node.id}
+            nodeId={node.id}
             position={node.position}
             salience={node.salience}
             selected={isSelected || isHovered}

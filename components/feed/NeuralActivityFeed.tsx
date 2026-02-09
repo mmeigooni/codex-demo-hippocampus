@@ -5,6 +5,7 @@ import { AnimatePresence } from "motion/react";
 
 import { ActivityCard, type ActivityEventView } from "@/components/feed/ActivityCard";
 import { PRGroupCard } from "@/components/feed/PRGroupCard";
+import { RuleGroupCard } from "@/components/feed/RuleGroupCard";
 import { activityEventMatchesNodeId, buildFeedRenderWindow, type SelectionSource } from "@/lib/feed/cross-selection";
 
 interface NeuralActivityFeedProps {
@@ -106,6 +107,27 @@ export function NeuralActivityFeed({
                         : null
                     }
                     onSelectEpisode={onSelectEvent}
+                  />
+                ) : event.type === "rule_promoted" && typeof event.graphNodeId === "string" && event.graphNodeId.length > 0 ? (
+                  <RuleGroupCard
+                    ruleTitle={
+                      typeof event.raw.title === "string" && event.raw.title.trim().length > 0
+                        ? event.raw.title
+                        : event.title
+                    }
+                    ruleId={
+                      typeof event.raw.rule_id === "string" && event.raw.rule_id.trim().length > 0
+                        ? event.raw.rule_id
+                        : event.graphNodeId
+                    }
+                    confidence={numberFromUnknown(event.raw.confidence) ?? undefined}
+                    triggers={event.triggers}
+                    episodeCount={numberFromUnknown(event.raw.episode_count) ?? undefined}
+                    index={index}
+                    selected={selected}
+                    pinnedFromGraph={pinnedEventId === event.id}
+                    graphNodeId={event.graphNodeId}
+                    onSelect={onSelectEvent ? () => onSelectEvent(event) : undefined}
                   />
                 ) : (
                   <ActivityCard
