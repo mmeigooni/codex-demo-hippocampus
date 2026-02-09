@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2, LogOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -23,8 +24,16 @@ export function LogoutButton() {
   };
 
   return (
-    <Button variant="outline" size="sm" onClick={onLogout} disabled={loading}>
-      {loading ? "Signing out..." : "Logout"}
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+      onClick={onLogout}
+      disabled={loading}
+      aria-label={loading ? "Signing out" : "Sign out"}
+      title={loading ? "Signing out" : "Sign out"}
+    >
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
     </Button>
   );
 }
