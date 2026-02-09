@@ -5,8 +5,9 @@ import { motion } from "motion/react";
 import { Sparkles } from "lucide-react";
 
 import { TriggerPill } from "@/components/feed/TriggerPill";
-import { getColorFamilyForRule } from "@/lib/color/cluster-palette";
+import { getColorFamilyForPatternKey, getColorFamilyForRule } from "@/lib/color/cluster-palette";
 import { entryDelay } from "@/lib/feed/entry-delay";
+import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 export interface RuleGroupCardProps {
   ruleTitle: string;
@@ -18,6 +19,7 @@ export interface RuleGroupCardProps {
   selected?: boolean;
   pinnedFromGraph?: boolean;
   graphNodeId?: string;
+  rulePatternKey?: string;
   onSelect?: () => void;
 }
 
@@ -42,6 +44,18 @@ function resolveConfidencePercent(confidence?: number) {
   return Math.round(clamped * 100);
 }
 
+function normalizePatternKey(value: unknown): PatternKey | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  if (!PATTERN_KEYS.includes(value as PatternKey)) {
+    return null;
+  }
+
+  return value as PatternKey;
+}
+
 export function RuleGroupCard({
   ruleTitle,
   ruleId,
@@ -52,10 +66,12 @@ export function RuleGroupCard({
   selected = false,
   pinnedFromGraph = false,
   graphNodeId,
+  rulePatternKey,
   onSelect,
 }: RuleGroupCardProps) {
   const colorKey = resolveRuleColorKey(ruleId, graphNodeId);
-  const colorFamily = getColorFamilyForRule(colorKey);
+  const patternKey = normalizePatternKey(rulePatternKey);
+  const colorFamily = patternKey ? getColorFamilyForPatternKey(patternKey) : getColorFamilyForRule(colorKey);
   const confidencePercent = resolveConfidencePercent(confidence);
   const selectable = Boolean(onSelect && graphNodeId);
 

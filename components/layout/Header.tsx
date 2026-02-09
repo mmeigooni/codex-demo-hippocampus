@@ -1,7 +1,6 @@
 import Image from "next/image";
 
 import { LogoutButton } from "@/components/layout/LogoutButton";
-import { Badge } from "@/components/ui/badge";
 
 interface HeaderProps {
   githubUsername: string | null;
@@ -26,22 +25,22 @@ export function Header({ githubUsername, avatarUrl }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        <Badge variant="secondary" className="bg-cyan-500/20 text-cyan-100">
-          {githubUsername ?? "Authenticated"}
-        </Badge>
-        {avatarUrl ? (
-          <Image
-            src={avatarUrl}
-            alt="GitHub avatar"
-            width={36}
-            height={36}
-            className="h-9 w-9 rounded-full border border-zinc-700 object-cover"
-          />
-        ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-xs text-zinc-200">
-            GH
-          </div>
-        )}
+        <div className="flex items-center gap-2 rounded-full border border-zinc-700/60 bg-zinc-900/50 px-3 py-1.5">
+          {avatarUrl ? (
+            <Image
+              src={avatarUrl}
+              alt="GitHub avatar"
+              width={28}
+              height={28}
+              className="h-7 w-7 rounded-full border border-zinc-700 object-cover"
+            />
+          ) : (
+            <div className="flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-xs text-zinc-200">
+              GH
+            </div>
+          )}
+          <span className="text-sm text-zinc-300">{githubUsername ?? "Authenticated"}</span>
+        </div>
         <LogoutButton />
       </div>
     </header>

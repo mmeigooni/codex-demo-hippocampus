@@ -8,11 +8,13 @@ import { ReasoningCard } from "@/components/feed/ReasoningCard";
 import { SalienceBadge } from "@/components/feed/SalienceBadge";
 import { TriggerPill } from "@/components/feed/TriggerPill";
 import {
+  getColorFamilyForPatternKey,
   getColorFamilyForEpisode,
   getColorFamilyForRule,
   type ColorFamily,
 } from "@/lib/color/cluster-palette";
 import { entryDelay } from "@/lib/feed/entry-delay";
+import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 export interface ActivityEventView {
   id: string;
@@ -64,10 +66,42 @@ function resolveBorderClass(event: ActivityEventView) {
   return "border-zinc-700/80";
 }
 
-function resolveClusterColor(graphNodeId: string): ColorFamily {
-  return graphNodeId.startsWith("rule-")
-    ? getColorFamilyForRule(graphNodeId)
-    : getColorFamilyForEpisode(graphNodeId);
+function normalizePatternKey(value: unknown): PatternKey | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  if (!PATTERN_KEYS.includes(value as PatternKey)) {
+    return null;
+  }
+
+  return value as PatternKey;
+}
+
+function resolvePatternKeyFromRaw(raw: Record<string, unknown>): PatternKey | null {
+  const episode = raw.episode;
+  if (episode && typeof episode === "object") {
+    const nestedPatternKey = normalizePatternKey((episode as Record<string, unknown>).pattern_key);
+    if (nestedPatternKey) {
+      return nestedPatternKey;
+    }
+  }
+
+  const topLevelPatternKey = normalizePatternKey(raw.pattern_key);
+  if (topLevelPatternKey) {
+    return topLevelPatternKey;
+  }
+
+  return normalizePatternKey(raw.rule_key);
+}
+
+function resolveClusterColor(graphNodeId: string, raw: Record<string, unknown>): ColorFamily {
+  const patternKey = resolvePatternKeyFromRaw(raw);
+  if (patternKey) {
+    return getColorFamilyForPatternKey(patternKey);
+  }
+
+  return graphNodeId.startsWith("rule-") ? getColorFamilyForRule(graphNodeId) : getColorFamilyForEpisode(graphNodeId);
 }
 
 export function ActivityCard({ event, index, selected = false, pinnedFromGraph = false, onSelect }: ActivityCardProps) {
@@ -84,8 +118,8 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
 
   const selectable = Boolean(onSelect && event.graphNodeId);
   const clusterColor =
-    event.variant === "import" && typeof event.graphNodeId === "string" && event.graphNodeId.length > 0
-      ? resolveClusterColor(event.graphNodeId)
+    typeof event.graphNodeId === "string" && event.graphNodeId.length > 0
+      ? resolveClusterColor(event.graphNodeId, event.raw)
       : null;
 
   const handleSelect = () => {

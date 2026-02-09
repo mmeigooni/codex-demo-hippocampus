@@ -4,10 +4,11 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
 
-import { getColorFamilyForEpisode } from "@/lib/color/cluster-palette";
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
+import { getColorFamilyForPatternKey } from "@/lib/color/cluster-palette";
 
 interface EpisodeNodeProps {
-  nodeId: string;
+  patternKey: string;
   position: [number, number, number];
   salience: number;
   selected: boolean;
@@ -15,13 +16,15 @@ interface EpisodeNodeProps {
   onClick: () => void;
 }
 
-export function EpisodeNode({ nodeId, position, salience, selected, onHover, onClick }: EpisodeNodeProps) {
+export function EpisodeNode({ patternKey, position, salience, selected, onHover, onClick }: EpisodeNodeProps) {
   const groupRef = useRef<Group>(null);
   const spawnProgressRef = useRef(0);
   const intensity = 0.35 + salience / 10;
   const radius = 0.15 + (salience / 10) * 0.3;
   const baseScale = selected ? 1.25 : 1;
-  const colorFamily = getColorFamilyForEpisode(nodeId);
+  const colorFamily = getColorFamilyForPatternKey(patternKey as PatternKey);
+  const normalizedSalience = Math.max(0, Math.min(10, salience));
+  const glowOpacity = 0.03 + (normalizedSalience / 10) * 0.09;
 
   useFrame((_, delta) => {
     if (!groupRef.current) {
@@ -73,7 +76,7 @@ export function EpisodeNode({ nodeId, position, salience, selected, onHover, onC
         <meshBasicMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
           transparent
-          opacity={selected ? 0.08 : 0.06}
+          opacity={selected ? Math.min(0.14, glowOpacity + 0.02) : glowOpacity}
           toneMapped={false}
           depthWrite={false}
         />

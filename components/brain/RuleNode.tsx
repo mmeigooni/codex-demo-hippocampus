@@ -4,21 +4,22 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
 
-import { getColorFamilyForRule } from "@/lib/color/cluster-palette";
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
+import { getColorFamilyForPatternKey } from "@/lib/color/cluster-palette";
 
 interface RuleNodeProps {
-  nodeId: string;
+  patternKey: string;
   position: [number, number, number];
   selected: boolean;
   onHover: (hovered: boolean) => void;
   onClick: () => void;
 }
 
-export function RuleNode({ nodeId, position, selected, onHover, onClick }: RuleNodeProps) {
+export function RuleNode({ patternKey, position, selected, onHover, onClick }: RuleNodeProps) {
   const groupRef = useRef<Group>(null);
   const spawnProgressRef = useRef(0);
   const baseScale = selected ? 1.25 : 1;
-  const colorFamily = getColorFamilyForRule(nodeId);
+  const colorFamily = getColorFamilyForPatternKey(patternKey as PatternKey);
 
   useFrame((_, delta) => {
     if (!groupRef.current) {
@@ -53,7 +54,7 @@ export function RuleNode({ nodeId, position, selected, onHover, onClick }: RuleN
       onClick={onClick}
     >
       <mesh>
-        <icosahedronGeometry args={[0.42, 1]} />
+        <octahedronGeometry args={[0.42, 0]} />
         <meshPhysicalMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
           emissive={selected ? colorFamily.accentMuted : colorFamily.bgMuted}
@@ -66,7 +67,7 @@ export function RuleNode({ nodeId, position, selected, onHover, onClick }: RuleN
         />
       </mesh>
       <mesh scale={1.06}>
-        <icosahedronGeometry args={[0.42, 1]} />
+        <octahedronGeometry args={[0.42, 0]} />
         <meshBasicMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
           transparent

@@ -10,7 +10,8 @@ import type {
   BrainNodeModel,
   PositionedBrainNode,
 } from "@/components/brain/types";
-import { getColorFamilyForEpisode, getColorFamilyForRule } from "@/lib/color/cluster-palette";
+import { getColorFamilyForPatternKey } from "@/lib/color/cluster-palette";
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 interface BrainGraphProps {
   nodes: BrainNodeModel[];
@@ -153,10 +154,7 @@ export function BrainGraph({
           return null;
         }
 
-        const edgeColor =
-          sourceNode?.type === "rule"
-            ? getColorFamilyForRule(edge.source).border
-            : getColorFamilyForEpisode(edge.source).border;
+        const edgeColor = getColorFamilyForPatternKey(sourceNode?.patternKey as PatternKey).border;
 
         return <NeuralEdge key={edge.id} from={source} to={target} weight={edge.weight} color={edgeColor} />;
       })}
@@ -188,7 +186,7 @@ export function BrainGraph({
           return (
             <RuleNode
               key={node.id}
-              nodeId={node.id}
+              patternKey={node.patternKey}
               position={node.position}
               selected={isSelected || isHovered}
               onHover={onHover}
@@ -200,7 +198,7 @@ export function BrainGraph({
         return (
           <EpisodeNode
             key={node.id}
-            nodeId={node.id}
+            patternKey={node.patternKey}
             position={node.position}
             salience={node.salience}
             selected={isSelected || isHovered}

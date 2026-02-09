@@ -1,3 +1,5 @@
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
+
 export interface ColorFamily {
   bg: string;
   bgMuted: string;
@@ -123,6 +125,19 @@ export const CLUSTER_PALETTE: readonly ColorFamily[] = [
   },
 ] as const;
 
+const PATTERN_COLOR_INDEX: Record<PatternKey, number> = {
+  "sensitive-logging": 2,
+  "auth-token-handling": 8,
+  "concurrency-serialization": 3,
+  idempotency: 6,
+  "retry-strategy": 1,
+  "state-transition": 5,
+  "input-validation": 4,
+  "dependency-resilience": 9,
+  "error-contract": 0,
+  "review-hygiene": 7,
+};
+
 function hashDjb2(input: string): number {
   let hash = 5381;
 
@@ -137,6 +152,11 @@ export function getColorFamilyByIndex(index: number): ColorFamily {
   const totalFamilies = CLUSTER_PALETTE.length;
   const normalizedIndex = ((Math.trunc(index) % totalFamilies) + totalFamilies) % totalFamilies;
   return CLUSTER_PALETTE[normalizedIndex]!;
+}
+
+export function getColorFamilyForPatternKey(patternKey: PatternKey): ColorFamily {
+  const index = PATTERN_COLOR_INDEX[patternKey] ?? PATTERN_COLOR_INDEX["review-hygiene"];
+  return getColorFamilyByIndex(index);
 }
 
 function getColorFamilyById(id: string): ColorFamily {
