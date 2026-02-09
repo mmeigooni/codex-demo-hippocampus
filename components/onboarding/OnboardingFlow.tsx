@@ -585,14 +585,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         return;
       }
 
-      const selection = importReplaySelectionRef.current;
       importReplaySelectionRef.current = null;
       importReplayRunIdRef.current = null;
-      if (!selection) {
-        return;
-      }
-
-      void refreshGraph(selection, { guardRunId: replayRunId });
     },
   });
 
@@ -709,6 +703,9 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           setVisibleNodeIds(null);
           setPhase((phaseCurrent) => moveForwardPhase(phaseCurrent, "ready"));
         } else {
+          // Load graph data BEFORE starting the theatrical scheduler so that
+          // displayNodes can filter graph.nodes as visibleNodeIds grows.
+          await refreshGraph(repoSelection, { guardRunId: runId });
           if (importRunIdRef.current !== runId) {
             return;
           }

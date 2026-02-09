@@ -34,12 +34,12 @@ export function resolveImportStreamMode(currentMode: ImportStreamMode, chunkEven
     return "replay";
   }
 
-  if (hasReplayManifest(chunkEvents)) {
-    return "replay";
-  }
-
   if (currentMode === "live") {
     return "live";
+  }
+
+  if (hasReplayManifest(chunkEvents)) {
+    return "replay";
   }
 
   if (hasLiveSignal(chunkEvents)) {
