@@ -8,7 +8,7 @@ import styles from "./page.module.css";
 
 export default function Home() {
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#020617] px-6 py-10">
+    <div className="relative flex min-h-screen items-start justify-center overflow-hidden bg-[#020617] px-6 pb-10 pt-14 sm:pt-20 lg:pt-24">
       <div className={cn(styles.landingGradient, "pointer-events-none absolute inset-0")} />
       <div className={cn(styles.landingParticles, "pointer-events-none absolute inset-0")} />
       <div className="pointer-events-none absolute inset-0">
