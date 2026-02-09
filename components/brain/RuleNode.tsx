@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
+import type { ThreeEvent } from "@react-three/fiber";
 import type { Group, MeshPhysicalMaterial } from "three";
 
 import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
@@ -37,6 +38,21 @@ export function RuleNode({
   const colorFamily = getColorFamilyForPatternKey(patternKey as PatternKey);
   const coreRadius = 0.21;
   const latticeRadius = 0.28;
+
+  const handlePointerEnter = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    onHover(true);
+  };
+
+  const handlePointerLeave = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    onHover(false);
+  };
+
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    onClick();
+  };
 
   useFrame((_, delta) => {
     const group = groupRef.current;
@@ -104,13 +120,7 @@ export function RuleNode({
   }, [baseScale]);
 
   return (
-    <group
-      ref={groupRef}
-      position={position}
-      onPointerOver={() => onHover(true)}
-      onPointerOut={() => onHover(false)}
-      onClick={onClick}
-    >
+    <group ref={groupRef} position={position}>
       <mesh>
         <icosahedronGeometry args={[coreRadius * 0.65, 2]} />
         <meshPhysicalMaterial
@@ -147,6 +157,20 @@ export function RuleNode({
           opacity={selected ? 0.2 : 0.12}
           toneMapped={false}
           depthWrite={false}
+        />
+      </mesh>
+      <mesh
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
+        onClick={handleClick}
+      >
+        <sphereGeometry args={[0.39, 16, 12]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0}
+          depthWrite={false}
+          depthTest={false}
+          toneMapped={false}
         />
       </mesh>
     </group>
