@@ -58,7 +58,7 @@ export function RuleGroupCard({
   const selectable = Boolean(onSelect && graphNodeId);
 
   const cardStyle: CSSProperties = {
-    borderColor: selected ? colorFamily.accent : colorFamily.border,
+    borderColor: selected ? colorFamily.accent : colorFamily.borderMuted,
     backgroundColor: `${colorFamily.bgMuted}1a`,
   };
 
@@ -74,9 +74,17 @@ export function RuleGroupCard({
     <motion.article
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
+      whileHover={
+        selectable && !selected
+          ? {
+              borderColor: colorFamily.border,
+              backgroundColor: `${colorFamily.bgMuted}29`,
+            }
+          : undefined
+      }
       transition={{ type: "spring", damping: 20, stiffness: 150, delay: index * 0.03 }}
       className={`space-y-3 rounded-lg border p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
-        selectable ? "cursor-pointer transition" : ""
+        selectable ? "cursor-pointer transition-colors" : ""
       } ${pinnedFromGraph ? "border-l-4" : ""}`}
       style={cardStyle}
       onClick={() => {

@@ -93,8 +93,16 @@ export function PRGroupCard({
     <motion.article
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
+      whileHover={
+        selected
+          ? undefined
+          : {
+              borderColor: clusterColor ? clusterColor.border : "rgba(103, 232, 249, 0.45)",
+              backgroundColor: "rgba(24, 24, 27, 0.82)",
+            }
+      }
       transition={{ duration: 0.26, delay: index * 0.04 }}
-      className={`space-y-3 rounded-lg border border-cyan-700/30 bg-zinc-900/70 p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
+      className={`space-y-3 rounded-lg border border-zinc-700/80 bg-zinc-900/70 p-3 transition-colors [contain-intrinsic-size:220px] [content-visibility:auto] ${
         selected && !clusterColor ? "border-cyan-300/70 ring-1 ring-cyan-300/60" : ""
       } ${pinnedFromGraph ? `border-l-4 ${clusterColor ? "" : "border-l-cyan-300/90"}` : ""}`}
       style={Object.keys(cardStyle).length > 0 ? cardStyle : undefined}
@@ -147,8 +155,10 @@ export function PRGroupCard({
                 <button
                   key={episode.id}
                   type="button"
-                  className={`w-full rounded-md border border-zinc-800 bg-zinc-950/50 p-2 text-left ${
-                    selectable ? `transition ${clusterColor ? "" : "hover:border-cyan-300/40"}` : "cursor-default"
+                  className={`w-full rounded-md border border-zinc-700/80 bg-zinc-950/50 p-2 text-left ${
+                    selectable
+                      ? `transition-colors ${clusterColor ? "hover:bg-zinc-950/70" : "hover:border-cyan-300/55 hover:bg-zinc-950/70"}`
+                      : "cursor-default"
                   } ${episodeSelected && !clusterColor ? "border-cyan-300/70 ring-1 ring-cyan-300/60" : ""}`}
                   style={
                     clusterColor && episodeSelected
