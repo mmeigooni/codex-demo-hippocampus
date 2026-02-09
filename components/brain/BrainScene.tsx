@@ -98,13 +98,49 @@ export function BrainScene({
   onNodeSelectionCommit,
 }: BrainSceneProps) {
   const [selectedNode, setSelectedNode] = useState<PositionedBrainNode | null>(null);
+  const [isPointerOverCanvas, setIsPointerOverCanvas] = useState(false);
+  const [isOrbitInteracting, setIsOrbitInteracting] = useState(false);
   const ambientRef = useRef<{ intensity: number } | null>(null);
+  const pointerLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasGraphData = useMemo(() => nodes.length > 0, [nodes.length]);
+  const shouldPauseAutoRotate = isPointerOverCanvas || isOrbitInteracting;
+
+  useEffect(() => {
+    return () => {
+      if (pointerLeaveTimerRef.current) {
+        clearTimeout(pointerLeaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCanvasPointerEnter = () => {
+    if (pointerLeaveTimerRef.current) {
+      clearTimeout(pointerLeaveTimerRef.current);
+      pointerLeaveTimerRef.current = null;
+    }
+
+    setIsPointerOverCanvas(true);
+  };
+
+  const handleCanvasPointerLeave = () => {
+    if (pointerLeaveTimerRef.current) {
+      clearTimeout(pointerLeaveTimerRef.current);
+    }
+
+    pointerLeaveTimerRef.current = setTimeout(() => {
+      setIsPointerOverCanvas(false);
+      pointerLeaveTimerRef.current = null;
+    }, 600);
+  };
 
   return (
     <div className="space-y-3">
-      <div className="h-[440px] overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(circle_at_top,_#042f2e_0%,_#020617_65%)]">
+      <div
+        className="h-[440px] overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(circle_at_top,_#042f2e_0%,_#020617_65%)]"
+        onPointerEnter={handleCanvasPointerEnter}
+        onPointerLeave={handleCanvasPointerLeave}
+      >
         {hasGraphData ? (
           <Canvas camera={{ position: [0, 2, 10], fov: 55 }}>
             <color attach="background" args={["#020617"]} />
@@ -138,8 +174,10 @@ export function BrainScene({
               maxDistance={15}
               minPolarAngle={Math.PI * 0.2}
               maxPolarAngle={Math.PI * 0.78}
-              autoRotate
+              autoRotate={!shouldPauseAutoRotate}
               autoRotateSpeed={consolidationVisuals?.isConsolidating ? 0.15 : 0.35}
+              onStart={() => setIsOrbitInteracting(true)}
+              onEnd={() => setIsOrbitInteracting(false)}
             />
             <EffectComposer>
               <AnimatedBloomEffect targetIntensity={consolidationVisuals?.isConsolidating ? 1.4 : 1.0} />
