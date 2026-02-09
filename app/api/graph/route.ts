@@ -11,12 +11,14 @@ import {
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
+import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 interface EpisodeGraphRecord {
   id: string;
   title: string;
   salience_score: number;
   triggers: string[];
+  pattern_key: string;
 }
 
 interface RuleGraphRecord {
@@ -25,6 +27,7 @@ interface RuleGraphRecord {
   confidence: number;
   triggers: string[];
   source_episode_ids: string[];
+  rule_key: string;
 }
 
 function normalizeTextArray(value: unknown): string[] {
@@ -39,6 +42,14 @@ function normalizeTextArray(value: unknown): string[] {
 
 function clampScore(score: number) {
   return Math.max(0, Math.min(10, Math.round(score)));
+}
+
+function normalizePatternKey(value: unknown): PatternKey {
+  if (typeof value === "string" && PATTERN_KEYS.includes(value as PatternKey)) {
+    return value as PatternKey;
+  }
+
+  return "review-hygiene";
 }
 
 export function buildGraph(episodes: EpisodeGraphRecord[], rules: RuleGraphRecord[]) {
@@ -58,6 +69,7 @@ export function buildGraph(episodes: EpisodeGraphRecord[], rules: RuleGraphRecor
       label: episode.title,
       salience,
       triggers: episode.triggers,
+      patternKey: normalizePatternKey(episode.pattern_key),
     };
 
     nodes.push(episodeNode);
@@ -81,6 +93,7 @@ export function buildGraph(episodes: EpisodeGraphRecord[], rules: RuleGraphRecor
       label: rule.title,
       salience: Math.max(4, clampScore(derivedSalience)),
       triggers: rule.triggers,
+      patternKey: normalizePatternKey(rule.rule_key),
     });
 
     for (const sourceEpisodeId of rule.source_episode_ids) {
@@ -161,6 +174,7 @@ export async function GET(request: Request) {
       title: episode.title,
       salience_score: Number(episode.salience_score ?? 0),
       triggers: normalizeTextArray(episode.triggers),
+      pattern_key: normalizePatternKey(episode.pattern_key),
     }));
     const rules = listRulesForRepo(selectedRepo.id).map((rule) => ({
       id: rule.id,
@@ -168,6 +182,7 @@ export async function GET(request: Request) {
       confidence: Number(rule.confidence ?? 0),
       triggers: normalizeTextArray(rule.triggers),
       source_episode_ids: normalizeTextArray(rule.source_episode_ids),
+      rule_key: normalizePatternKey(rule.rule_key),
     }));
 
     return Response.json(buildGraph(episodes, rules));
@@ -206,13 +221,13 @@ export async function GET(request: Request) {
   const [episodesResponse, rulesResponse] = await Promise.all([
     supabase
       .from("episodes")
-      .select("id,title,salience_score,triggers")
+      .select("id,title,salience_score,triggers,pattern_key")
       .eq("repo_id", selectedRepo.id)
       .order("created_at", { ascending: false })
       .limit(400),
     supabase
       .from("rules")
-      .select("id,title,confidence,triggers,source_episode_ids")
+      .select("id,title,confidence,triggers,source_episode_ids,rule_key")
       .eq("repo_id", selectedRepo.id)
       .order("updated_at", { ascending: false })
       .limit(200),
@@ -231,6 +246,7 @@ export async function GET(request: Request) {
     title: episode.title,
     salience_score: Number(episode.salience_score ?? 0),
     triggers: normalizeTextArray(episode.triggers),
+    pattern_key: normalizePatternKey(episode.pattern_key),
   }));
   const rules = (rulesResponse.data ?? []).map((rule) => ({
     id: rule.id,
@@ -238,6 +254,7 @@ export async function GET(request: Request) {
     confidence: Number(rule.confidence ?? 0),
     triggers: normalizeTextArray(rule.triggers),
     source_episode_ids: normalizeTextArray(rule.source_episode_ids),
+    rule_key: normalizePatternKey(rule.rule_key),
   }));
 
   return Response.json(buildGraph(episodes, rules));
