@@ -1,13 +1,13 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { motion } from "motion/react";
-import { Sparkles } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { ChevronDown, Sparkles } from "lucide-react";
 
 import { TriggerPill } from "@/components/feed/TriggerPill";
 import { getColorFamilyForPatternKey, getColorFamilyForRule } from "@/lib/color/cluster-palette";
 import { entryDelay } from "@/lib/feed/entry-delay";
-import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
+import { normalizePatternKey } from "@/lib/feed/card-color";
 
 export interface RuleGroupCardProps {
   ruleTitle: string;
@@ -44,18 +44,6 @@ function resolveConfidencePercent(confidence?: number) {
   return Math.round(clamped * 100);
 }
 
-function normalizePatternKey(value: unknown): PatternKey | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  if (!PATTERN_KEYS.includes(value as PatternKey)) {
-    return null;
-  }
-
-  return value as PatternKey;
-}
-
 export function RuleGroupCard({
   ruleTitle,
   ruleId,
@@ -69,6 +57,14 @@ export function RuleGroupCard({
   rulePatternKey,
   onSelect,
 }: RuleGroupCardProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (pinnedFromGraph) {
+      setExpanded(true);
+    }
+  }, [pinnedFromGraph]);
+
   const colorKey = resolveRuleColorKey(ruleId, graphNodeId);
   const patternKey = normalizePatternKey(rulePatternKey);
   const colorFamily = patternKey ? getColorFamilyForPatternKey(patternKey) : getColorFamilyForRule(colorKey);
@@ -131,52 +127,82 @@ export function RuleGroupCard({
       tabIndex={selectable ? 0 : undefined}
       aria-pressed={selectable ? selected : undefined}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4" style={{ color: colorFamily.accent }} />
-          <p className="font-mono text-xs uppercase tracking-wide" style={{ color: colorFamily.accent }}>
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 rounded-md px-1 py-0.5 text-left transition hover:bg-zinc-800/40"
+        onClick={(clickEvent) => {
+          clickEvent.stopPropagation();
+          setExpanded((current) => !current);
+        }}
+        aria-expanded={expanded}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <Sparkles className="h-4 w-4 shrink-0" style={{ color: colorFamily.accent }} />
+          <p className="shrink-0 font-mono text-xs uppercase tracking-wide" style={{ color: colorFamily.accent }}>
             Rule Promoted
           </p>
+          <p className="truncate text-sm font-medium" style={{ color: colorFamily.text }}>
+            {ruleTitle}
+          </p>
         </div>
-        {typeof episodeCount === "number" && Number.isFinite(episodeCount) ? (
-          <span className="rounded-full border px-2 py-1 text-xs" style={{ borderColor: colorFamily.borderMuted, color: colorFamily.textMuted }}>
-            {episodeCount} episode{episodeCount === 1 ? "" : "s"}
-          </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colorFamily.accent }} />
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+            style={{ color: colorFamily.textMuted }}
+          />
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-2 overflow-hidden"
+          >
+            {pinnedFromGraph ? (
+              <p className="text-[10px] uppercase tracking-wider" style={{ color: colorFamily.textMuted }}>
+                Selected from graph
+              </p>
+            ) : null}
+
+            {typeof episodeCount === "number" && Number.isFinite(episodeCount) ? (
+              <span
+                className="rounded-full border px-2 py-1 text-xs"
+                style={{ borderColor: colorFamily.borderMuted, color: colorFamily.textMuted }}
+              >
+                {episodeCount} episode{episodeCount === 1 ? "" : "s"}
+              </span>
+            ) : null}
+
+            {confidencePercent !== null ? (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span style={{ color: colorFamily.textMuted }}>Confidence</span>
+                  <span style={{ color: colorFamily.text }}>{confidencePercent}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-300"
+                    style={{ width: `${confidencePercent}%`, backgroundColor: colorFamily.accent }}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {triggers.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {triggers.map((trigger) => (
+                  <TriggerPill key={`${ruleId}-${trigger}`} trigger={trigger} accentColor={colorFamily.accentMuted} />
+                ))}
+              </div>
+            ) : null}
+          </motion.div>
         ) : null}
-      </div>
-
-      {pinnedFromGraph ? (
-        <p className="text-[10px] uppercase tracking-wider" style={{ color: colorFamily.textMuted }}>
-          Selected from graph
-        </p>
-      ) : null}
-
-      <p className="text-sm font-medium" style={{ color: colorFamily.text }}>
-        {ruleTitle}
-      </p>
-
-      {confidencePercent !== null ? (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <span style={{ color: colorFamily.textMuted }}>Confidence</span>
-            <span style={{ color: colorFamily.text }}>{confidencePercent}%</span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80">
-            <div
-              className="h-full rounded-full transition-[width] duration-300"
-              style={{ width: `${confidencePercent}%`, backgroundColor: colorFamily.accent }}
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {triggers.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
-          {triggers.map((trigger) => (
-            <TriggerPill key={`${ruleId}-${trigger}`} trigger={trigger} accentColor={colorFamily.accentMuted} />
-          ))}
-        </div>
-      ) : null}
+      </AnimatePresence>
     </motion.article>
   );
 }
