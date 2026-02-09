@@ -1,7 +1,6 @@
 import Image from "next/image";
 
 import { LoginWithGitHubButton } from "@/components/auth/LoginWithGitHubButton";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -21,10 +20,6 @@ export default function Home() {
 
       <Card className={cn(styles.landingCard, "relative z-10 w-full max-w-xl border-cyan-900/70 bg-zinc-950/75 backdrop-blur-xl")}>
         <CardHeader className="space-y-5 text-center">
-          <Badge className="mx-auto w-fit border-cyan-500/50 bg-cyan-500/15 text-cyan-100">
-            Wave 25 Visual System
-          </Badge>
-
           <div className="mx-auto">
             <Image
               src="/hippocampus-logo.png"
