@@ -1,5 +1,6 @@
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
 import { graphNodeIdFromImportEvent } from "@/lib/feed/cross-selection";
+import { patternDisplayLabel } from "@/lib/feed/narrative-partition";
 import type { ImportEvent } from "@/lib/github/types";
 
 function numberFromUnknown(value: unknown): number | null {
@@ -92,7 +93,7 @@ export function toImportActivityEvent(event: ImportEvent, index: number): Activi
       id: prefix,
       type: event.type,
       title: episode?.title ?? "Episode created",
-      subtitle: `pattern: ${String(episode?.the_pattern ?? "unknown")}`,
+      subtitle: patternDisplayLabel(episode?.the_pattern),
       salience: Number(episode?.salience_score ?? 0),
       triggers: Array.isArray(episode?.triggers) ? episode.triggers : [],
       whyItMatters: typeof episode?.why_it_matters === "string" ? episode.why_it_matters : undefined,

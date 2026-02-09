@@ -5,10 +5,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown } from "lucide-react";
 
 import { ReasoningCard } from "@/components/feed/ReasoningCard";
-import { SalienceBadge } from "@/components/feed/SalienceBadge";
+import { SalienceBadge, toneForSalience } from "@/components/feed/SalienceBadge";
 import { TriggerPill } from "@/components/feed/TriggerPill";
 import { entryDelay } from "@/lib/feed/entry-delay";
 import { resolveClusterColor } from "@/lib/feed/card-color";
+import { EVENT_TYPE_LABELS } from "@/lib/feed/narrative-partition";
 
 export interface ActivityEventView {
   id: string;
@@ -155,13 +156,15 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
             className={`shrink-0 font-mono text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
             style={clusterColor ? { color: clusterColor.accent } : undefined}
           >
-            {event.type}
+            {EVENT_TYPE_LABELS[event.type] ?? event.type}
           </p>
           <p className="truncate text-sm font-medium text-zinc-100">{event.title}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {clusterColor ? <span className="h-2 w-2 rounded-full" style={{ backgroundColor: clusterColor.accent }} /> : null}
-          {event.salience !== undefined ? <span className="text-xs text-zinc-500">{event.salience}</span> : null}
+          {event.salience !== undefined ? (
+            <span aria-label={`salience-${event.salience}`} className={`h-2 w-2 rounded-full border ${toneForSalience(event.salience)}`} />
+          ) : null}
           <ChevronDown className={`h-4 w-4 text-zinc-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
         </div>
       </button>
