@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
 import { ReasoningCard } from "@/components/feed/ReasoningCard";
 import { DreamState } from "@/components/sleep-cycle/DreamState";
@@ -132,18 +133,38 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
             </p>
           ) : null}
 
-          {error ? (
-            <p role="alert" className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
-              {error}
-            </p>
-          ) : null}
+          <AnimatePresence>
+            {error ? (
+              <motion.div
+                key="error"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.25 }}
+              >
+                <p role="alert" className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
+                  {error}
+                </p>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
-          {storageMode === "memory-fallback" ? (
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100/90">
-              Local fallback mode active: consolidation data is being read from and written to in-memory runtime
-              storage.
-            </p>
-          ) : null}
+          <AnimatePresence>
+            {storageMode === "memory-fallback" ? (
+              <motion.div
+                key="storage-warning"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.25 }}
+              >
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100/90">
+                  Local fallback mode active: consolidation data is being read from and written to in-memory runtime
+                  storage.
+                </p>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </CardContent>
       </Card>
 
@@ -155,9 +176,19 @@ export function SleepCyclePanel({ repos, defaultRepoId = null, initialPack = nul
         contradictions={progress.contradictions}
       />
 
-      {isReasoningActive || reasoningText ? (
-        <ReasoningCard text={reasoningText} isActive={isReasoningActive} index={0} />
-      ) : null}
+      <AnimatePresence>
+        {isReasoningActive || reasoningText ? (
+          <motion.div
+            key="reasoning"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.25 }}
+          >
+            <ReasoningCard text={reasoningText} isActive={isReasoningActive} index={0} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <Card className="border-zinc-800 bg-zinc-900/40">
         <CardHeader>
