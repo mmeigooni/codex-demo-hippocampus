@@ -23,6 +23,7 @@ Deliver Wave 29 by propagating deterministic cluster colors across graph and fee
 | Consolidation color handling | Keep semantic event variants unless `graphNodeId` is present, then add cluster tint | Preserve existing event language while adding graph-feed association | WP-095 |
 | Edge coloring source | Use source node cluster family | Relationship ownership reads from origin node | WP-094 |
 | Rule card scope | Ship static `RuleGroupCard` with rule metadata and cluster color accents | Provides value without requiring additional data threading | WP-096, WP-097 |
+| Rule promotion fallback path | If `rule_promoted` lacks valid `rule_id`/`graphNodeId`, render `ActivityCard` via existing fallback branch | Keeps feed resilient with no event loss and no extra placeholder path | WP-097 |
 | TriggerPill strategy | Optional `accentColor` with default zinc fallback | Backward-compatible extension for cluster-aware styling | WP-095, WP-096 |
 
 ## Pre-Execution Feedback Checkpoint
@@ -135,11 +136,13 @@ No implementation starts until this checkpoint returns explicit proceed confirma
 - **Implementation notes:**
   - Import `RuleGroupCard` into `NeuralActivityFeed`.
   - In event rendering branch, keep grouped episode condition first.
-  - Add `rule_promoted` condition before default `ActivityCard` fallback; map fields from `event.raw` defensively.
+  - Add `rule_promoted` condition before default `ActivityCard` fallback; guard on valid rule linkage and map fields from `event.raw` defensively.
+  - Use fallback-only rendering for missing linkage: if `event.type === "rule_promoted"` and `event.graphNodeId` is absent, allow natural fallthrough to `ActivityCard`.
   - Preserve wrapper `ref` behavior for scroll-to-pinned compatibility.
   - Avoid prop/interface or render-window logic changes outside targeted condition.
 - **Acceptance criteria:**
   - [ ] `rule_promoted` events render as `RuleGroupCard`
+  - [ ] `rule_promoted` events without valid `graphNodeId` fall back to `ActivityCard` (no drop, no placeholder)
   - [ ] Non-rule events continue rendering existing card types
   - [ ] Cross-selection and pinned scroll behavior continue working
   - [ ] `npx tsc --noEmit` passes
@@ -175,5 +178,6 @@ No implementation starts until this checkpoint returns explicit proceed confirma
 - `lib/color/cluster-palette.ts` is stable and requires no API change.
 - `graphNodeId` format remains consistent across event producers.
 - `rule_promoted` events continue exposing `rule_id` and optional metadata in `event.raw`.
+- When `rule_promoted` linkage is missing, feed rendering must preserve the event via existing `ActivityCard` fallback.
 - `framer-motion` and `lucide-react` are already available in the current app.
 - Runtime inline style usage for dynamic palette values is acceptable with Tailwind utility classes.
