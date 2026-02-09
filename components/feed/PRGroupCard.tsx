@@ -13,6 +13,7 @@ import {
   getColorFamilyForRule,
   type ColorFamily,
 } from "@/lib/color/cluster-palette";
+import { entryDelay } from "@/lib/feed/entry-delay";
 
 interface PRGroupCardProps {
   prNumber: number;
@@ -55,6 +56,7 @@ export function PRGroupCard({
   onSelectEpisode,
 }: PRGroupCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const delayKey = `pr-${prNumber}-${prTitle}`;
 
   const meanSalience = useMemo(() => averageSalience(episodes), [episodes]);
   const hasSelectedEpisode = useMemo(
@@ -101,7 +103,12 @@ export function PRGroupCard({
               backgroundColor: "rgba(24, 24, 27, 0.82)",
             }
       }
-      transition={{ duration: 0.26, delay: index * 0.04 }}
+      transition={{
+        type: "spring",
+        damping: 24,
+        stiffness: 180,
+        delay: entryDelay(delayKey, index),
+      }}
       className={`space-y-3 rounded-lg border border-zinc-700/80 bg-zinc-900/70 p-3 transition-colors [contain-intrinsic-size:220px] [content-visibility:auto] ${
         selected && !clusterColor ? "border-cyan-300/70 ring-1 ring-cyan-300/60" : ""
       } ${pinnedFromGraph ? `border-l-4 ${clusterColor ? "" : "border-l-cyan-300/90"}` : ""}`}

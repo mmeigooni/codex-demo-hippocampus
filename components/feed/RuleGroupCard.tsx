@@ -6,6 +6,7 @@ import { Sparkles } from "lucide-react";
 
 import { TriggerPill } from "@/components/feed/TriggerPill";
 import { getColorFamilyForRule } from "@/lib/color/cluster-palette";
+import { entryDelay } from "@/lib/feed/entry-delay";
 
 export interface RuleGroupCardProps {
   ruleTitle: string;
@@ -53,7 +54,8 @@ export function RuleGroupCard({
   graphNodeId,
   onSelect,
 }: RuleGroupCardProps) {
-  const colorFamily = getColorFamilyForRule(resolveRuleColorKey(ruleId, graphNodeId));
+  const colorKey = resolveRuleColorKey(ruleId, graphNodeId);
+  const colorFamily = getColorFamilyForRule(colorKey);
   const confidencePercent = resolveConfidencePercent(confidence);
   const selectable = Boolean(onSelect && graphNodeId);
 
@@ -82,7 +84,12 @@ export function RuleGroupCard({
             }
           : undefined
       }
-      transition={{ type: "spring", damping: 20, stiffness: 150, delay: index * 0.03 }}
+      transition={{
+        type: "spring",
+        damping: 24,
+        stiffness: 180,
+        delay: entryDelay(colorKey, index),
+      }}
       className={`space-y-3 rounded-lg border p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
         selectable ? "cursor-pointer transition-colors" : ""
       } ${pinnedFromGraph ? "border-l-4" : ""}`}
