@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
+import type { ThreeEvent } from "@react-three/fiber";
 import type {
   Group,
   LineBasicMaterial,
@@ -105,6 +106,21 @@ export function EpisodeNode({
     () => createFracturedHexPrism(prismRadius, prismHeight, nodeId, removalFraction),
     [nodeId, prismHeight, prismRadius, removalFraction],
   );
+
+  const handlePointerEnter = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    onHover(true);
+  };
+
+  const handlePointerLeave = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    onHover(false);
+  };
+
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    onClick();
+  };
 
   useFrame((state, delta) => {
     const group = groupRef.current;
@@ -279,13 +295,7 @@ export function EpisodeNode({
   }, [baseScale]);
 
   return (
-    <group
-      ref={groupRef}
-      position={position}
-      onPointerOver={() => onHover(true)}
-      onPointerOut={() => onHover(false)}
-      onClick={onClick}
-    >
+    <group ref={groupRef} position={position}>
       <mesh geometry={fracturedPrism.solidGeometry}>
         <meshBasicMaterial
           ref={fillMaterialRef}
@@ -320,6 +330,21 @@ export function EpisodeNode({
           depthWrite={false}
         />
       </points>
+
+      <mesh
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
+        onClick={handleClick}
+      >
+        <sphereGeometry args={[0.25, 16, 12]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0}
+          depthWrite={false}
+          depthTest={false}
+          toneMapped={false}
+        />
+      </mesh>
 
       <mesh ref={rippleRingRef} rotation={[Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.13, 0.17, 24]} />
