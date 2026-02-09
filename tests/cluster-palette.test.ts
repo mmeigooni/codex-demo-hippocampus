@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { PATTERN_KEYS } from "@/lib/memory/pattern-taxonomy";
 import {
   CLUSTER_PALETTE,
+  type ColorFamily,
   getColorFamilyByIndex,
+  getColorFamilyForPatternKey,
   getColorFamilyForEpisode,
   getColorFamilyForRule,
 } from "@/lib/color/cluster-palette";
@@ -21,6 +24,17 @@ describe("cluster palette", () => {
     expect(getColorFamilyByIndex(-1)).toBe(CLUSTER_PALETTE[9]);
     expect(getColorFamilyByIndex(10)).toBe(CLUSTER_PALETTE[0]);
     expect(getColorFamilyByIndex(42)).toBe(CLUSTER_PALETTE[2]);
+  });
+
+  it("maps pattern keys to deterministic unique color families", () => {
+    expect(getColorFamilyForPatternKey("sensitive-logging")).toBe(CLUSTER_PALETTE[2]);
+
+    const seen = new Set<ColorFamily>();
+    for (const key of PATTERN_KEYS) {
+      seen.add(getColorFamilyForPatternKey(key));
+    }
+
+    expect(seen.size).toBe(PATTERN_KEYS.length);
   });
 
   it("can reach all ten families through hash mapping", () => {

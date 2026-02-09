@@ -6,6 +6,7 @@ export interface BrainNodeModel {
   label: string;
   salience: number;
   triggers: string[];
+  patternKey: string;
   ruleId?: string;
 }
 
