@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
@@ -37,8 +38,16 @@ export function RepoSelector({
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [repoError, setRepoError] = useState<string | null>(null);
   const [selectedFullName, setSelectedFullName] = useState<string>("");
+  const [userExpanded, setUserExpanded] = useState(false);
 
   const demoRepo = useMemo(() => parseFullName(demoRepoFullName), [demoRepoFullName]);
+  const showExpanded = !collapsed || userExpanded;
+
+  useEffect(() => {
+    if (collapsed) {
+      setUserExpanded(false);
+    }
+  }, [collapsed]);
 
   const loadRepos = async () => {
     setLoadingRepos(true);
@@ -88,31 +97,40 @@ export function RepoSelector({
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       className="overflow-hidden"
     >
-      <AnimatePresence initial={false} mode="wait">
-        {collapsed ? (
+      {collapsed ? (
+        <motion.button
+          type="button"
+          layout
+          onClick={() => setUserExpanded((current) => !current)}
+          aria-expanded={userExpanded}
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          className="flex h-12 w-full items-center justify-between rounded-lg border border-cyan-700/30 bg-zinc-900/60 px-4 text-left"
+        >
+          <div className="flex items-center gap-2 text-sm text-zinc-100">
+            <motion.span
+              className="h-2 w-2 rounded-full bg-cyan-300"
+              animate={{ opacity: [0.35, 1, 0.35] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <span>Importing {activeRepoName ?? "repository"}...</span>
+          </div>
+          <ChevronDown
+            className={`h-4 w-4 text-zinc-400 transition-transform ${userExpanded ? "rotate-180" : ""}`}
+          />
+        </motion.button>
+      ) : null}
+
+      <AnimatePresence initial={false}>
+        {showExpanded ? (
           <motion.div
-            key="collapsed"
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            className="flex h-12 items-center rounded-lg border border-cyan-700/30 bg-zinc-900/60 px-4"
-          >
-            <div className="flex items-center gap-2 text-sm text-zinc-100">
-              <motion.span
-                className="h-2 w-2 rounded-full bg-cyan-300"
-                animate={{ opacity: [0.35, 1, 0.35] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-              />
-              <span>Importing {activeRepoName ?? "repository"}...</span>
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="expanded"
+            key={collapsed ? "expanded-accordion" : "expanded-default"}
+            layout
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
-            className="grid gap-4 lg:grid-cols-2"
+            className={`grid gap-4 lg:grid-cols-2 ${collapsed ? "pt-3" : ""}`}
           >
             <Card className="border-cyan-700/30 bg-zinc-900/60">
               <CardHeader>
@@ -173,7 +191,7 @@ export function RepoSelector({
               </CardContent>
             </Card>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </motion.div>
   );
