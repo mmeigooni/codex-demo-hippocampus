@@ -977,7 +977,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
               externalSelectedNodeId={crossSelection.selectedNodeId}
               onNodeSelectionCommit={handleGraphSelectionCommit}
             />
-            <div className="max-h-[440px] overflow-auto pr-1">
+            <div className="max-h-[440px] overflow-auto px-1">
               <NeuralActivityFeed
                 events={activityEvents}
                 maxItems={14}

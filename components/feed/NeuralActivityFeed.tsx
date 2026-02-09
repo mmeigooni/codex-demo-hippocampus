@@ -70,7 +70,7 @@ export function NeuralActivityFeed({
   }, [selectedNodeId, selectionSource, visibleEvents]);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 px-0.5">
       <AnimatePresence>
         {visibleEvents.length === 0 ? (
           <p className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3 text-sm text-zinc-400">
