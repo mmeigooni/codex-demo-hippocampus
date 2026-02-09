@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
 
 import type { DreamPhase } from "@/components/sleep-cycle/DreamState";
@@ -23,6 +24,26 @@ interface DreamStateMiniProps {
   contradictions: number;
 }
 
+function AnimatedCounter({ value }: { value: number }) {
+  const hasMountedRef = useRef(false);
+
+  useEffect(() => {
+    hasMountedRef.current = true;
+  }, []);
+
+  return (
+    <motion.span
+      key={value}
+      initial={hasMountedRef.current ? { scale: 1.3, color: "#22d3ee" } : false}
+      animate={{ scale: 1, color: "#e4e4e7" }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className="text-zinc-200"
+    >
+      {value}
+    </motion.span>
+  );
+}
+
 export function DreamStateMini({ phase, patterns, rules, salienceUpdates, contradictions }: DreamStateMiniProps) {
   return (
     <div className="flex min-h-10 flex-wrap items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-1.5 text-xs">
@@ -36,16 +57,16 @@ export function DreamStateMini({ phase, patterns, rules, salienceUpdates, contra
       </motion.span>
 
       <span className="text-zinc-400">
-        <span className="text-zinc-200">{patterns}</span> patterns
+        <AnimatedCounter value={patterns} /> patterns
       </span>
       <span className="text-zinc-400">
-        <span className="text-zinc-200">{rules}</span> rules
+        <AnimatedCounter value={rules} /> rules
       </span>
       <span className="text-zinc-400">
-        <span className="text-zinc-200">{salienceUpdates}</span> salience
+        <AnimatedCounter value={salienceUpdates} /> salience
       </span>
       <span className="text-zinc-400">
-        <span className="text-zinc-200">{contradictions}</span> conflicts
+        <AnimatedCounter value={contradictions} /> conflicts
       </span>
     </div>
   );
