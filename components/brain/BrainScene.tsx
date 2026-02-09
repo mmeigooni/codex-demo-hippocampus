@@ -42,28 +42,35 @@ interface AnimatedBloomEffectProps {
 }
 
 function AnimatedBloomEffect({ targetIntensity }: AnimatedBloomEffectProps) {
-  const bloomEffect = useMemo(
-    () =>
-      new BloomEffect({
-        blendFunction: BlendFunction.ADD,
-        mipmapBlur: true,
-        luminanceThreshold: 0.25,
-        intensity: 1.0,
-        radius: 0.65,
-      }),
-    [],
-  );
+  const bloomEffectRef = useRef<BloomEffect | null>(null);
+  if (bloomEffectRef.current == null) {
+    bloomEffectRef.current = new BloomEffect({
+      blendFunction: BlendFunction.ADD,
+      mipmapBlur: true,
+      luminanceThreshold: 0.25,
+      intensity: 1.0,
+      radius: 0.65,
+    });
+  }
+
+  const bloomEffect = bloomEffectRef.current;
 
   useEffect(
     () => () => {
       bloomEffect.dispose();
+      bloomEffectRef.current = null;
     },
     [bloomEffect],
   );
 
   useFrame((_, delta) => {
     const alpha = Math.min(1, delta * 2);
-    bloomEffect.intensity = MathUtils.lerp(bloomEffect.intensity, targetIntensity, alpha);
+    const effect = bloomEffectRef.current;
+    if (!effect) {
+      return;
+    }
+
+    effect.intensity = MathUtils.lerp(effect.intensity, targetIntensity, alpha);
   });
 
   return <primitive object={bloomEffect} />;
