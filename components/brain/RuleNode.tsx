@@ -26,13 +26,13 @@ export function RuleNode({ patternKey, position, selected, onHover, onClick }: R
       return;
     }
 
-    if (spawnProgressRef.current >= 1) {
-      return;
+    if (spawnProgressRef.current < 1) {
+      spawnProgressRef.current = Math.min(1, spawnProgressRef.current + delta * 3.5);
+      const eased = 1 - Math.pow(1 - spawnProgressRef.current, 3);
+      groupRef.current.scale.setScalar(eased * baseScale);
     }
 
-    spawnProgressRef.current = Math.min(1, spawnProgressRef.current + delta * 3.5);
-    const eased = 1 - Math.pow(1 - spawnProgressRef.current, 3);
-    groupRef.current.scale.setScalar(eased * baseScale);
+    groupRef.current.rotation.y += delta * 0.3;
   });
 
   useEffect(() => {
@@ -54,11 +54,11 @@ export function RuleNode({ patternKey, position, selected, onHover, onClick }: R
       onClick={onClick}
     >
       <mesh>
-        <octahedronGeometry args={[0.42, 0]} />
+        <octahedronGeometry args={[0.65, 0]} />
         <meshPhysicalMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
           emissive={selected ? colorFamily.accentMuted : colorFamily.bgMuted}
-          emissiveIntensity={selected ? 1.2 : 0.8}
+          emissiveIntensity={selected ? 1.5 : 1.0}
           clearcoat={1}
           clearcoatRoughness={0.15}
           roughness={0.25}
@@ -66,8 +66,19 @@ export function RuleNode({ patternKey, position, selected, onHover, onClick }: R
           toneMapped={false}
         />
       </mesh>
+      <mesh scale={1.3}>
+        <icosahedronGeometry args={[0.65, 1]} />
+        <meshBasicMaterial
+          wireframe
+          color={colorFamily.border}
+          transparent
+          opacity={selected ? 0.35 : 0.2}
+          toneMapped={false}
+          depthWrite={false}
+        />
+      </mesh>
       <mesh scale={1.06}>
-        <octahedronGeometry args={[0.42, 0]} />
+        <octahedronGeometry args={[0.65, 0]} />
         <meshBasicMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
           transparent
