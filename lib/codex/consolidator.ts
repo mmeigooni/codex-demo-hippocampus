@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { createCodexThread, runStreamedWithSchema, runWithSchema } from "@/lib/codex/client";
+import { boundConsolidationDelta, clampSalienceScore } from "@/lib/codex/salience-policy";
 import {
   buildRuleDescriptionForKey,
   buildRuleTitleForKey,
@@ -111,10 +112,7 @@ export interface ConsolidationStreamCallbacks {
 const configuredMinSupport = Number.parseInt(process.env.RULE_PROMOTION_MIN_SUPPORT ?? "2", 10);
 const RULE_PROMOTION_MIN_SUPPORT =
   Number.isFinite(configuredMinSupport) && configuredMinSupport > 0 ? configuredMinSupport : 2;
-
-function clampSalience(score: number) {
-  return Math.max(0, Math.min(10, Math.round(score)));
-}
+const CONSOLIDATION_MAX_SALIENCE_DELTA = 3;
 
 function sanitizeTriggers(triggers: string[]) {
   const normalized = triggers
@@ -265,7 +263,8 @@ export function sanitizeConsolidationOutput(
 
   const salienceUpdates = new Map<string, { episode_id: string; salience_score: number; reason: string }>();
   for (const update of raw.salience_updates) {
-    if (!episodeIds.has(update.episode_id)) {
+    const episode = episodeMap.get(update.episode_id);
+    if (!episode || !episodeIds.has(update.episode_id)) {
       continue;
     }
 
@@ -274,9 +273,25 @@ export function sanitizeConsolidationOutput(
       continue;
     }
 
+    const proposedScore = clampSalienceScore(update.salience_score);
+    const boundedScore = boundConsolidationDelta({
+      currentScore: episode.salience_score,
+      proposedScore,
+      maxDelta: CONSOLIDATION_MAX_SALIENCE_DELTA,
+    });
+
+    if (boundedScore !== proposedScore) {
+      console.info("[consolidation] salience update capped", {
+        episode_id: update.episode_id,
+        current_score: episode.salience_score,
+        proposed_score: proposedScore,
+        bounded_score: boundedScore,
+      });
+    }
+
     salienceUpdates.set(update.episode_id, {
       episode_id: update.episode_id,
-      salience_score: clampSalience(update.salience_score),
+      salience_score: boundedScore,
       reason,
     });
   }

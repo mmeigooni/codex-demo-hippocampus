@@ -78,6 +78,62 @@ describe("sanitizeConsolidationOutput", () => {
     expect(sanitized.prune_candidates).toEqual(["ep-1"]);
   });
 
+  it("bounds salience updates to +/-3 from the current episode score", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    const salienceEpisodes: ConsolidationEpisodeInput[] = [
+      {
+        id: "ep-up",
+        title: "Upward update",
+        what_happened: "up",
+        pattern_key: "error-contract",
+        the_pattern: "error",
+        the_fix: "fix",
+        why_it_matters: "matters",
+        salience_score: 5,
+        triggers: ["error"],
+        source_pr_number: 1,
+        source_url: "https://example.com/pr/1",
+      },
+      {
+        id: "ep-down",
+        title: "Downward update",
+        what_happened: "down",
+        pattern_key: "error-contract",
+        the_pattern: "error",
+        the_fix: "fix",
+        why_it_matters: "matters",
+        salience_score: 5,
+        triggers: ["error"],
+        source_pr_number: 2,
+        source_url: "https://example.com/pr/2",
+      },
+    ];
+
+    const sanitized = sanitizeConsolidationOutput(
+      {
+        patterns: [],
+        rules_to_promote: [],
+        contradictions: [],
+        salience_updates: [
+          { episode_id: "ep-up", salience_score: 10, reason: "critical regression evidence" },
+          { episode_id: "ep-down", salience_score: 0, reason: "stabilized as low impact" },
+        ],
+        prune_candidates: [],
+      },
+      salienceEpisodes,
+    );
+
+    const updatesByEpisode = new Map(
+      sanitized.salience_updates.map((update) => [update.episode_id, update.salience_score]),
+    );
+    expect(updatesByEpisode.get("ep-up")).toBe(8);
+    expect(updatesByEpisode.get("ep-down")).toBe(2);
+    expect(infoSpy).toHaveBeenCalledTimes(2);
+
+    infoSpy.mockRestore();
+  });
+
   it("enforces minimum support of 2 episodes per promoted rule key", () => {
     const singletonEpisodes: ConsolidationEpisodeInput[] = [
       {

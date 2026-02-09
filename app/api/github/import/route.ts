@@ -26,7 +26,7 @@ import {
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
 
-function buildSseMessage(event: ImportEvent) {
+function buildSseMessage(event: ImportEvent<unknown>) {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
 
@@ -405,7 +405,7 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (event: ImportEvent) => {
+      const emit = (event: ImportEvent<unknown>) => {
         controller.enqueue(encoder.encode(buildSseMessage(event)));
       };
 

@@ -14,10 +14,18 @@ Produce:
 - `salience_updates`
 - `prune_candidates`
 
+## Salience rubric
+- `0-2`: Cosmetic, style-only, or non-operational changes.
+- `3-4`: Local contract/readability improvements with limited blast radius.
+- `5-6`: Moderate reliability or performance impact in normal operation.
+- `7-8`: Correctness or security boundary impact with meaningful operational risk.
+- `9-10`: Immediate security, PII, credential, data-loss, or compliance risk.
+
 ## Output requirements
 - Return strict JSON only.
 - Ground every promoted rule in source episode IDs.
 - Contradictions must name both conflicting sources and why they conflict.
+- Prefer no salience update unless multi-episode evidence supports re-scoring.
 
 ## Output schema
 ```json
