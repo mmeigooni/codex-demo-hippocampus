@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseJsonSseBuffer } from "@/lib/sse/parse";
 
@@ -15,6 +15,7 @@ const mockSummarizeTokenReduction = vi.hoisted(() => vi.fn());
 const mockUpsertRepoForUser = vi.hoisted(() => vi.fn());
 const mockListEpisodesForRepo = vi.hoisted(() => vi.fn());
 const mockInsertEpisodeForRepo = vi.hoisted(() => vi.fn());
+const mockApplySalienceUpdates = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/supabase/server", () => ({
   createServerClient: mockCreateServerClient,
@@ -47,6 +48,7 @@ vi.mock("@/lib/fallback/runtime-memory-store", () => ({
   upsertRepoForUser: mockUpsertRepoForUser,
   listEpisodesForRepo: mockListEpisodesForRepo,
   insertEpisodeForRepo: mockInsertEpisodeForRepo,
+  applySalienceUpdates: mockApplySalienceUpdates,
 }));
 
 import { POST } from "@/app/api/github/import/route";
@@ -84,6 +86,8 @@ const BASE_PRS = [
   },
 ];
 
+const ORIGINAL_DEMO_REPO = process.env.DEMO_REPO;
+
 function createSupabaseAuthMock() {
   return {
     auth: {
@@ -113,6 +117,7 @@ async function parseImportEvents(response: Response) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete process.env.DEMO_REPO;
 
   mockCreateServerClient.mockResolvedValue(createSupabaseAuthMock());
   mockResolveStorageModeAfterProfilesPreflight.mockResolvedValue("memory-fallback");
@@ -163,6 +168,15 @@ beforeEach(() => {
     why_it_matters: "matters",
     triggers: ["tests"],
   }));
+});
+
+afterAll(() => {
+  if (ORIGINAL_DEMO_REPO === undefined) {
+    delete process.env.DEMO_REPO;
+    return;
+  }
+
+  process.env.DEMO_REPO = ORIGINAL_DEMO_REPO;
 });
 
 describe("POST /api/github/import replay detection", () => {
@@ -231,6 +245,92 @@ describe("POST /api/github/import replay detection", () => {
     expect(mockEncodeEpisode).not.toHaveBeenCalled();
     expect(mockFetchPRReviews).not.toHaveBeenCalled();
     expect(mockFetchPRDiff).not.toHaveBeenCalled();
+    expect(mockApplySalienceUpdates).not.toHaveBeenCalled();
+  });
+
+  it("backfills demo salience before replay and includes salience_backfilled in completion", async () => {
+    const demoPrs = BASE_PRS.map((pr, index) => ({
+      ...pr,
+      number: index + 1,
+      title: `Demo PR ${index + 1}`,
+      htmlUrl: `https://example.com/pr/${index + 1}`,
+    }));
+    mockFetchMergedPRs.mockResolvedValue(demoPrs);
+
+    const inflatedEpisodes = [
+      {
+        id: "ep-1",
+        source_pr_number: 1,
+        title: "Cached 1",
+        salience_score: 10,
+        pattern_key: "review-hygiene",
+        the_pattern: "cached-pattern",
+        why_it_matters: "cached-why-1",
+        triggers: ["cache"],
+      },
+      {
+        id: "ep-2",
+        source_pr_number: 2,
+        title: "Cached 2",
+        salience_score: 10,
+        pattern_key: "review-hygiene",
+        the_pattern: "cached-pattern",
+        why_it_matters: "cached-why-2",
+        triggers: ["cache"],
+      },
+    ];
+    const backfilledEpisodes = [
+      {
+        ...inflatedEpisodes[0],
+        salience_score: 9,
+      },
+      {
+        ...inflatedEpisodes[1],
+        salience_score: 9,
+      },
+    ];
+
+    mockListEpisodesForRepo
+      .mockReturnValueOnce(inflatedEpisodes)
+      .mockReturnValueOnce(inflatedEpisodes)
+      .mockReturnValueOnce(backfilledEpisodes);
+
+    const response = await POST(
+      new Request("http://localhost/api/github/import", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ owner: "mmeigooni", repo: "shopflow-platform" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const events = await parseImportEvents(response);
+    const createdEvents = events.filter((event) => event.type === "episode_created");
+
+    expect(createdEvents).toHaveLength(2);
+    expect(createdEvents[0]?.data).toMatchObject({
+      pr_number: 1,
+      episode: {
+        salience_score: 9,
+      },
+    });
+
+    expect(mockApplySalienceUpdates).toHaveBeenCalledWith("repo-1", [
+      { episode_id: "ep-1", salience_score: 9 },
+      { episode_id: "ep-2", salience_score: 9 },
+    ]);
+
+    const completeEvent = events.find((event) => event.type === "complete");
+    expect(completeEvent?.data).toMatchObject({
+      total: 2,
+      failed: 0,
+      skipped: 0,
+      replayed: true,
+      repo_id: "repo-1",
+      salience_backfilled: 2,
+    });
   });
 
   it("does not replay when cache is mixed and keeps live import path", async () => {
