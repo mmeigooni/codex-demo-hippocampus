@@ -5,8 +5,10 @@ import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { Eye, Lightbulb, Sparkles } from "lucide-react";
 
 import { ActivityCard, type ActivityEventView } from "@/components/feed/ActivityCard";
+import { ObservationRow } from "@/components/feed/ObservationRow";
 import { PRGroupCard } from "@/components/feed/PRGroupCard";
 import { RuleGroupCard } from "@/components/feed/RuleGroupCard";
+import { ThinkingDivider } from "@/components/feed/ThinkingDivider";
 import { getColorFamilyForPatternKey, getColorFamilyForRule } from "@/lib/color/cluster-palette";
 import type { NarrativeSections } from "@/lib/feed/narrative-partition";
 import { activityEventMatchesNodeId, buildFeedRenderWindow, type SelectionSource } from "@/lib/feed/cross-selection";
@@ -61,12 +63,14 @@ function renderEventCard({
   index,
   selectedNodeId,
   pinnedFromGraph = false,
+  tier = "default",
   onSelectEvent,
 }: {
   event: ActivityEventView;
   index: number;
   selectedNodeId: string | null;
   pinnedFromGraph?: boolean;
+  tier?: "default" | "milestone";
   onSelectEvent?: (event: ActivityEventView) => void;
 }) {
   const groupedEpisodes = event.groupedEpisodes;
@@ -119,6 +123,7 @@ function renderEventCard({
       index={index}
       selected={selected}
       pinnedFromGraph={pinnedFromGraph}
+      tier={tier}
       onSelect={onSelectEvent}
     />
   );
@@ -252,19 +257,36 @@ export function NarrativeFeed({
                     }}
                     data-activity-event-id={event.id}
                   >
-                    {renderEventCard({
-                      event,
-                      index,
-                      selectedNodeId,
-                      pinnedFromGraph: pinnedEventId === event.id,
-                      onSelectEvent,
-                    })}
+                    <ObservationRow
+                      event={event}
+                      index={index}
+                      selected={activityEventMatchesNodeId(event, selectedNodeId)}
+                      pinnedFromGraph={pinnedEventId === event.id}
+                      onSelect={onSelectEvent}
+                    />
                   </motion.div>
                 ))
               )}
             </AnimatePresence>
           </div>
         </section>
+
+        <AnimatePresence initial={false}>
+          {sections.phase !== "observing" ? (
+            <motion.div
+              key="observations-thinking-divider"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ThinkingDivider
+                label="Analyzing patterns"
+                active={sections.phase === "analyzing" && sections.insights.length === 0}
+              />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         <AnimatePresence initial={false}>
           {showLearnedSection ? (
@@ -293,6 +315,7 @@ export function NarrativeFeed({
                         event,
                         index,
                         selectedNodeId,
+                        tier: "milestone",
                         onSelectEvent,
                       })}
                     </motion.div>
@@ -322,6 +345,8 @@ export function NarrativeFeed({
                     })}
                   </motion.div>
                 ) : null}
+
+                {sections.insights.length > 0 ? <ThinkingDivider label="Crystallizing insights" active={false} /> : null}
 
                 {sections.insights.length === 0 ? (
                   <p className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3 text-sm text-zinc-400">
