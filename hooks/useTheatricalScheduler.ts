@@ -40,21 +40,21 @@ export interface TheatricalSchedulerController<TEvent extends ScheduledEvent = S
   getSnapshot: () => SchedulerSnapshot;
 }
 
-export const DEFAULT_THEATRICAL_INTERVAL_MS = 450;
+export const DEFAULT_THEATRICAL_INTERVAL_MS = 900;
 
 export const DEFAULT_THEATRICAL_INTERVAL_OVERRIDES: Record<string, number> = {
-  encoding_start: 150,
-  episode_created: 550,
-  pattern_detected: 700,
-  rule_promoted: 900,
-  contradiction_found: 600,
-  salience_updated: 350,
-  consolidation_start: 400,
-  consolidation_complete: 200,
+  encoding_start: 700,
+  episode_created: 1800,
+  pattern_detected: 3500,
+  rule_promoted: 4500,
+  contradiction_found: 2500,
+  salience_updated: 1800,
+  consolidation_start: 1200,
+  consolidation_complete: 500,
 };
 
-const STREAM_TEXT_CHUNK_SIZE = 40;
-const STREAM_TEXT_INTERVAL_MS = 35;
+const STREAM_TEXT_CHUNK_SIZE = 20;
+const STREAM_TEXT_INTERVAL_MS = 50;
 
 function coerceInterval(value: number | undefined, fallback: number) {
   if (typeof value !== "number" || !Number.isFinite(value)) {

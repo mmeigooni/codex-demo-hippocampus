@@ -156,7 +156,7 @@ describe("createTheatricalSchedulerController", () => {
     vi.runAllTimers();
 
     expect(chunked.length).toBeGreaterThan(1);
-    expect(chunked[0]).toBe(streamText.slice(0, 40));
+    expect(chunked[0]).toBe(streamText.slice(0, 20));
     expect(chunked[chunked.length - 1]).toBe(streamText);
     expect(completed).toEqual([streamText]);
   });
