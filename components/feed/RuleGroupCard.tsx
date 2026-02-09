@@ -70,15 +70,14 @@ export function RuleGroupCard({
   const colorFamily = patternKey ? getColorFamilyForPatternKey(patternKey) : getColorFamilyForRule(colorKey);
   const confidencePercent = resolveConfidencePercent(confidence);
   const selectable = Boolean(onSelect && graphNodeId);
+  const cardDelay = entryDelay(colorKey, index);
+  const selectedShadow = `0 0 0 1px ${colorFamily.accent}`;
+  const restingShadow = selected ? selectedShadow : "0 0 0 0 transparent";
 
   const cardStyle: CSSProperties = {
     borderColor: selected ? colorFamily.accent : colorFamily.borderMuted,
     backgroundColor: `${colorFamily.bgMuted}1a`,
   };
-
-  if (selected) {
-    cardStyle.boxShadow = `0 0 0 1px ${colorFamily.accent}`;
-  }
 
   if (pinnedFromGraph) {
     cardStyle.borderLeftColor = colorFamily.accent;
@@ -86,8 +85,13 @@ export function RuleGroupCard({
 
   return (
     <motion.article
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: 20, scale: 0.95, boxShadow: restingShadow }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        boxShadow: [restingShadow, `0 0 20px 4px ${colorFamily.glow}`, restingShadow],
+      }}
       whileHover={
         selectable && !selected
           ? {
@@ -98,9 +102,15 @@ export function RuleGroupCard({
       }
       transition={{
         type: "spring",
-        damping: 24,
-        stiffness: 180,
-        delay: entryDelay(colorKey, index),
+        damping: 18,
+        stiffness: 140,
+        delay: cardDelay,
+        boxShadow: {
+          duration: 1.2,
+          times: [0, 0.4, 1],
+          ease: "easeOut",
+          delay: cardDelay,
+        },
       }}
       className={`space-y-3 rounded-lg border p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
         selectable ? "cursor-pointer transition-colors" : ""
@@ -129,7 +139,18 @@ export function RuleGroupCard({
     >
       <div className="flex items-center justify-between gap-3 rounded-md px-1 py-0.5">
         <div className="flex min-w-0 items-center gap-2">
-          <Sparkles className="h-4 w-4 shrink-0" style={{ color: colorFamily.accent }} />
+          <motion.div
+            initial={{ rotate: -30, scale: 0 }}
+            animate={{ rotate: 0, scale: 1 }}
+            transition={{
+              type: "spring",
+              damping: 12,
+              stiffness: 200,
+              delay: cardDelay + 0.2,
+            }}
+          >
+            <Sparkles className="h-4 w-4 shrink-0" style={{ color: colorFamily.accent }} />
+          </motion.div>
           <p className="shrink-0 font-mono text-xs uppercase tracking-wide" style={{ color: colorFamily.accent }}>
             Insight
           </p>
@@ -174,8 +195,12 @@ export function RuleGroupCard({
 
             {typeof episodeCount === "number" && Number.isFinite(episodeCount) ? (
               <span
-                className="rounded-full border px-2 py-1 text-xs"
-                style={{ borderColor: colorFamily.borderMuted, color: colorFamily.textMuted }}
+                className="rounded-full border px-2 py-1 text-xs font-medium"
+                style={{
+                  borderColor: colorFamily.borderMuted,
+                  color: colorFamily.textMuted,
+                  backgroundColor: `${colorFamily.bgMuted}33`,
+                }}
               >
                 Based on {episodeCount} observation{episodeCount === 1 ? "" : "s"}
               </span>
@@ -188,9 +213,12 @@ export function RuleGroupCard({
                   <span style={{ color: colorFamily.text }}>{confidencePercent}%</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80">
-                  <div
+                  <motion.div
                     className="h-full rounded-full transition-[width] duration-300"
-                    style={{ width: `${confidencePercent}%`, backgroundColor: colorFamily.accent }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${confidencePercent}%` }}
+                    transition={{ duration: 0.8, ease: "easeOut", delay: cardDelay + 0.3 }}
+                    style={{ backgroundColor: colorFamily.accent }}
                   />
                 </div>
               </div>
