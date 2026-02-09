@@ -39,7 +39,7 @@ export function ReasoningCard({ text, isActive, eventId, index }: ReasoningCardP
       className="space-y-3 rounded-lg border border-indigo-500/30 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 p-3 [contain-intrinsic-size:220px] [content-visibility:auto]"
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-xs uppercase tracking-wide text-indigo-200">reasoning</p>
+        <p className="font-mono text-xs uppercase tracking-wide text-indigo-200">{isActive ? "Thinking..." : "Analysis"}</p>
         {isActive ? (
           <motion.span
             animate={{ opacity: [0.4, 1, 0.4] }}
@@ -51,7 +51,7 @@ export function ReasoningCard({ text, isActive, eventId, index }: ReasoningCardP
       </div>
 
       {!isActive && text ? (
-        <p className="text-xs text-indigo-100/80">Reasoning complete ({text.length} chars)</p>
+        <p className="text-xs text-indigo-100/80">Analysis complete</p>
       ) : (
         <div ref={textContainerRef} className="max-h-36 overflow-auto rounded-md border border-indigo-500/20 bg-zinc-950/40 p-2">
           <pre className="whitespace-pre-wrap break-words text-xs font-mono text-indigo-100/90">
