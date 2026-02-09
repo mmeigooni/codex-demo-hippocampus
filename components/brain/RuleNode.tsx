@@ -17,11 +17,6 @@ interface RuleNodeProps {
   onClick: () => void;
 }
 
-function elasticEaseOut(t: number) {
-  const p = 0.3;
-  return Math.pow(2, -10 * t) * Math.sin(((t - p / 4) * (2 * Math.PI)) / p) + 1;
-}
-
 export function RuleNode({
   patternKey,
   position,
@@ -53,12 +48,25 @@ export function RuleNode({
     let emissiveIntensity = baseEmissiveIntensity;
 
     if (burstProgressRef.current > 0 && burstProgressRef.current < 1) {
-      burstProgressRef.current = Math.min(1, burstProgressRef.current + delta / 0.8);
-      const eased = elasticEaseOut(burstProgressRef.current);
-      burstScaleMultiplier = 2 - eased;
-      emissiveIntensity = 3.5 + (baseEmissiveIntensity - 3.5) * burstProgressRef.current;
+      burstProgressRef.current = Math.min(1, burstProgressRef.current + delta / 1.2);
+      const t = burstProgressRef.current;
 
-      if (burstProgressRef.current >= 1) {
+      if (t < 0.4) {
+        const phase = t / 0.4;
+        const eased = 1 - Math.pow(1 - phase, 3);
+        burstScaleMultiplier = 1.8 - 0.8 * eased;
+      } else if (t < 0.6) {
+        burstScaleMultiplier = 1;
+      } else if (t < 0.8) {
+        const flashPhase = (t - 0.6) / 0.2;
+        burstScaleMultiplier = 1;
+        emissiveIntensity = baseEmissiveIntensity + (4.0 - baseEmissiveIntensity) * (1 - flashPhase);
+      } else {
+        burstScaleMultiplier = 1;
+        emissiveIntensity = baseEmissiveIntensity;
+      }
+
+      if (t >= 1) {
         burstProgressRef.current = 0;
         burstScaleMultiplier = 1;
         emissiveIntensity = baseEmissiveIntensity;
@@ -72,8 +80,6 @@ export function RuleNode({
     } else {
       group.scale.setScalar(baseScale * burstScaleMultiplier);
     }
-
-    group.rotation.y += delta * 0.3;
 
     if (coreMaterialRef.current) {
       coreMaterialRef.current.emissiveIntensity = emissiveIntensity;
@@ -106,7 +112,7 @@ export function RuleNode({
       onClick={onClick}
     >
       <mesh>
-        <sphereGeometry args={[coreRadius, 20, 20]} />
+        <icosahedronGeometry args={[coreRadius * 0.65, 2]} />
         <meshPhysicalMaterial
           ref={coreMaterialRef}
           color={selected ? colorFamily.accent : colorFamily.border}
@@ -122,7 +128,7 @@ export function RuleNode({
         />
       </mesh>
       <mesh>
-        <icosahedronGeometry args={[latticeRadius, 1]} />
+        <dodecahedronGeometry args={[latticeRadius, 0]} />
         <meshBasicMaterial
           wireframe
           color={selected ? colorFamily.accent : colorFamily.border}
@@ -133,7 +139,7 @@ export function RuleNode({
         />
       </mesh>
       <mesh scale={1.04}>
-        <icosahedronGeometry args={[latticeRadius, 1]} />
+        <dodecahedronGeometry args={[latticeRadius, 0]} />
         <meshBasicMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
           wireframe
