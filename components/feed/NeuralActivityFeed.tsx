@@ -136,6 +136,11 @@ export function NeuralActivityFeed({
                     selected={selected}
                     pinnedFromGraph={pinnedEventId === event.id}
                     graphNodeId={event.graphNodeId}
+                    rulePatternKey={
+                      typeof event.raw.rule_key === "string" && event.raw.rule_key.trim().length > 0
+                        ? event.raw.rule_key
+                        : undefined
+                    }
                     onSelect={onSelectEvent ? () => onSelectEvent(event) : undefined}
                   />
                 ) : (

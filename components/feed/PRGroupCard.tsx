@@ -9,11 +9,13 @@ import type { ActivityEventView } from "@/components/feed/ActivityCard";
 import { SalienceBadge } from "@/components/feed/SalienceBadge";
 import { TriggerPill } from "@/components/feed/TriggerPill";
 import {
+  getColorFamilyForPatternKey,
   getColorFamilyForEpisode,
   getColorFamilyForRule,
   type ColorFamily,
 } from "@/lib/color/cluster-palette";
 import { entryDelay } from "@/lib/feed/entry-delay";
+import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 interface PRGroupCardProps {
   prNumber: number;
@@ -39,10 +41,42 @@ function averageSalience(episodes: ActivityEventView[]) {
   return Math.round((total / values.length) * 10) / 10;
 }
 
-function resolveClusterColor(graphNodeId: string): ColorFamily {
-  return graphNodeId.startsWith("rule-")
-    ? getColorFamilyForRule(graphNodeId)
-    : getColorFamilyForEpisode(graphNodeId);
+function normalizePatternKey(value: unknown): PatternKey | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  if (!PATTERN_KEYS.includes(value as PatternKey)) {
+    return null;
+  }
+
+  return value as PatternKey;
+}
+
+function resolvePatternKeyFromRaw(raw: Record<string, unknown>): PatternKey | null {
+  const episode = raw.episode;
+  if (episode && typeof episode === "object") {
+    const nestedPatternKey = normalizePatternKey((episode as Record<string, unknown>).pattern_key);
+    if (nestedPatternKey) {
+      return nestedPatternKey;
+    }
+  }
+
+  const topLevelPatternKey = normalizePatternKey(raw.pattern_key);
+  if (topLevelPatternKey) {
+    return topLevelPatternKey;
+  }
+
+  return normalizePatternKey(raw.rule_key);
+}
+
+function resolveClusterColor(graphNodeId: string, raw: Record<string, unknown>): ColorFamily {
+  const patternKey = resolvePatternKeyFromRaw(raw);
+  if (patternKey) {
+    return getColorFamilyForPatternKey(patternKey);
+  }
+
+  return graphNodeId.startsWith("rule-") ? getColorFamilyForRule(graphNodeId) : getColorFamilyForEpisode(graphNodeId);
 }
 
 export function PRGroupCard({
@@ -64,11 +98,13 @@ export function PRGroupCard({
     [episodes, selectedEpisodeId],
   );
   const clusterColor = useMemo(() => {
-    const firstGraphNodeId = episodes.find(
+    const firstLinkedEpisode = episodes.find(
       (episode) => typeof episode.graphNodeId === "string" && episode.graphNodeId.length > 0,
-    )?.graphNodeId;
+    );
 
-    return firstGraphNodeId ? resolveClusterColor(firstGraphNodeId) : null;
+    return firstLinkedEpisode?.graphNodeId
+      ? resolveClusterColor(firstLinkedEpisode.graphNodeId, firstLinkedEpisode.raw)
+      : null;
   }, [episodes]);
 
   const cardStyle: CSSProperties = {};
