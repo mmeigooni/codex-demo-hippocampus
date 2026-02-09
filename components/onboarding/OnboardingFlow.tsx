@@ -16,6 +16,7 @@ import { DistributionCTA } from "@/components/onboarding/DistributionCTA";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConsolidationStream } from "@/hooks/useConsolidationStream";
+import { useConsolidationVisuals } from "@/hooks/useConsolidationVisuals";
 import { useDistributionStream } from "@/hooks/useDistributionStream";
 import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent } from "@/lib/codex/types";
@@ -274,20 +275,18 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [distributionRepoId, setDistributionRepoId] = useState<string | null>(null);
   const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string> | null>(null);
   const [visibleConsolidationNodeIds, setVisibleConsolidationNodeIds] = useState<Set<string> | null>(null);
-  const [pulsingNodeIds, setPulsingNodeIds] = useState<Set<string> | null>(null);
-  const [pulseEpoch, setPulseEpoch] = useState(0);
   const [associations, setAssociations] = useState<AssociationMap>(new Map());
   const [crossSelection, setCrossSelection] = useState<CrossSelectionState>({
     selectedNodeId: null,
     source: "feed",
   });
   const graphRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedConsolidationEventCountRef = useRef(0);
   const importReplaySelectionRef = useRef<ImportRepoRequest | null>(null);
   const importReplayRunIdRef = useRef<number | null>(null);
   const importRunIdRef = useRef(0);
   const importAbortControllerRef = useRef<AbortController | null>(null);
+  const { visualState: consolidationVisuals, processConsolidationEvent } = useConsolidationVisuals();
 
   const {
     runConsolidation,
@@ -626,12 +625,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setStorageMode(null);
     setVisibleNodeIds(new Set());
     setVisibleConsolidationNodeIds(null);
-    if (pulseTimeoutRef.current) {
-      clearTimeout(pulseTimeoutRef.current);
-      pulseTimeoutRef.current = null;
-    }
-    setPulsingNodeIds(null);
-    setPulseEpoch(0);
     setAssociations(new Map());
     setCrossSelection({ selectedNodeId: null, source: "feed" });
     setPhase("importing");
@@ -760,12 +753,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setConsolidationRepoId(activeRepoId);
     setDistributionRepoId(null);
     setVisibleConsolidationNodeIds(new Set());
-    if (pulseTimeoutRef.current) {
-      clearTimeout(pulseTimeoutRef.current);
-      pulseTimeoutRef.current = null;
-    }
-    setPulsingNodeIds(null);
-    setPulseEpoch(0);
     setPhase("consolidating");
     await runConsolidation(activeRepoId);
   };
@@ -848,6 +835,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     let shouldRevealAllRules = false;
 
     for (const event of pendingEvents) {
+      processConsolidationEvent(event);
+
       if (event.type === "rule_promoted" || event.type === "salience_updated") {
         shouldDebounceRefresh = true;
       }
@@ -858,37 +847,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         const ruleId = eventData.rule_id;
         if (typeof ruleId === "string" && ruleId.length > 0) {
           revealedRuleNodeIds.push(`rule-${ruleId}`);
-        }
-      }
-
-      if (event.type === "pattern_detected") {
-        const eventData = event.data as Record<string, unknown>;
-        const episodeIds = eventData.episode_ids;
-
-        if (Array.isArray(episodeIds)) {
-          const nodeIds = episodeIds
-            .filter((id): id is string => typeof id === "string" && id.length > 0)
-            .map((id) => `episode-${id}`);
-
-          if (nodeIds.length > 0) {
-            setPulsingNodeIds((current) => {
-              const next = new Set(current ?? []);
-              for (const nodeId of nodeIds) {
-                next.add(nodeId);
-              }
-              return next;
-            });
-            setPulseEpoch((current) => current + 1);
-
-            if (pulseTimeoutRef.current) {
-              clearTimeout(pulseTimeoutRef.current);
-            }
-
-            pulseTimeoutRef.current = setTimeout(() => {
-              setPulsingNodeIds(null);
-              pulseTimeoutRef.current = null;
-            }, 2000);
-          }
         }
       }
 
@@ -937,16 +895,19 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
       void refreshGraph(activeSelection);
     }
-  }, [activeRepoId, activeSelection, consolidationEvents, consolidationRepoId, refreshGraph]);
+  }, [
+    activeRepoId,
+    activeSelection,
+    consolidationEvents,
+    consolidationRepoId,
+    processConsolidationEvent,
+    refreshGraph,
+  ]);
 
   useEffect(() => {
     return () => {
       if (graphRefreshDebounceRef.current) {
         clearTimeout(graphRefreshDebounceRef.current);
-      }
-
-      if (pulseTimeoutRef.current) {
-        clearTimeout(pulseTimeoutRef.current);
       }
 
       cancelImportReplay();
@@ -1091,8 +1052,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
               edges={displayEdges}
               layoutNodes={graph.nodes}
               layoutEdges={graph.edges}
-              pulsingNodeIds={pulsingNodeIds}
-              pulseEpoch={pulseEpoch}
+              consolidationVisuals={consolidationVisuals}
               externalSelectedNodeId={crossSelection.selectedNodeId}
               onNodeSelectionCommit={handleGraphSelectionCommit}
             />
