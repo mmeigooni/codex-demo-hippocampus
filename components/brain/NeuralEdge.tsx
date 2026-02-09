@@ -15,21 +15,31 @@ export function NeuralEdge({ from, to, weight, color = "#38bdf8" }: NeuralEdgePr
   const targetOpacity = Math.max(0.2, Math.min(0.85, weight));
   const [currentOpacity, setCurrentOpacity] = useState(0);
   const spawnProgressRef = useRef(0);
+  const spawnGlowRef = useRef(1);
 
   useFrame((_, delta) => {
-    if (spawnProgressRef.current >= 1) {
+    if (spawnProgressRef.current >= 1 && spawnGlowRef.current <= 0) {
       return;
     }
 
-    spawnProgressRef.current = Math.min(1, spawnProgressRef.current + delta / 0.3);
+    if (spawnProgressRef.current < 1) {
+      spawnProgressRef.current = Math.min(1, spawnProgressRef.current + delta / 0.3);
+    }
+
     const eased = 1 - Math.pow(1 - spawnProgressRef.current, 3);
-    const nextOpacity = targetOpacity * eased;
+
+    if (spawnGlowRef.current > 0) {
+      spawnGlowRef.current = Math.max(0, spawnGlowRef.current - delta / 1.5);
+    }
+
+    const glowBoost = spawnGlowRef.current > 0 ? spawnGlowRef.current * 0.15 : 0;
+    const nextOpacity = (targetOpacity + glowBoost) * eased;
 
     setCurrentOpacity((previous) => (Math.abs(previous - nextOpacity) < 0.001 ? previous : nextOpacity));
   });
 
   useEffect(() => {
-    if (spawnProgressRef.current >= 1) {
+    if (spawnProgressRef.current >= 1 && spawnGlowRef.current <= 0) {
       setCurrentOpacity(targetOpacity);
     }
   }, [targetOpacity]);
