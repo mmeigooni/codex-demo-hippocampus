@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { EpisodeNode } from "@/components/brain/EpisodeNode";
 import { NeuralEdge } from "@/components/brain/NeuralEdge";
+import { ReplayOrchestrator } from "@/components/brain/ReplayOrchestrator";
 import { RuleNode } from "@/components/brain/RuleNode";
+import type { ConsolidationVisualState } from "@/components/brain/consolidation-visual-types";
 import type {
   BrainEdgeModel,
   BrainNodeModel,
@@ -23,6 +25,7 @@ interface BrainGraphProps {
   edges: BrainEdgeModel[];
   layoutNodes?: BrainNodeModel[];
   layoutEdges?: BrainEdgeModel[];
+  consolidationVisuals?: ConsolidationVisualState;
   pulsingNodeIds?: Set<string> | null;
   pulseEpoch?: number;
   externalSelectedNodeId?: string | null;
@@ -185,6 +188,7 @@ export function BrainGraph({
   edges,
   layoutNodes,
   layoutEdges,
+  consolidationVisuals,
   pulsingNodeIds,
   pulseEpoch,
   externalSelectedNodeId,
@@ -193,6 +197,11 @@ export function BrainGraph({
 }: BrainGraphProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [activatedNodeMap, setActivatedNodeMap] = useState<
+    Map<string, "pulse" | "flash-warn" | "salience-shift">
+  >(new Map());
+  const [activatedNodeEpoch, setActivatedNodeEpoch] = useState(0);
+  const [highlightedEdgePairs, setHighlightedEdgePairs] = useState<Set<string>>(new Set());
   const nodesForLayout = layoutNodes ?? nodes;
   const edgesForLayout = layoutEdges ?? edges;
 
@@ -216,6 +225,58 @@ export function BrainGraph({
   const activeNodeId = hoveredNodeId ?? effectiveSelectedId;
   const selectedNode = positionedNodes.find((node) => node.id === effectiveSelectedId) ?? null;
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+
+  const handleActivateNode = useCallback((nodeId: string, mode: "pulse" | "flash-warn" | "salience-shift") => {
+    setActivatedNodeMap((current) => {
+      const next = new Map(current);
+      next.set(nodeId, mode);
+      return next;
+    });
+    setActivatedNodeEpoch((current) => current + 1);
+  }, []);
+
+  const handleHighlightEdge = useCallback((sourceId: string, targetId: string) => {
+    setHighlightedEdgePairs((current) => {
+      const next = new Set(current);
+      next.add(`${sourceId}->${targetId}`);
+      next.add(`${targetId}->${sourceId}`);
+      return next;
+    });
+  }, []);
+
+  const handleClearEffects = useCallback(() => {
+    setActivatedNodeMap(new Map());
+    setHighlightedEdgePairs(new Set());
+  }, []);
+
+  const getEdgeColor = useCallback(
+    (nodeId: string) => {
+      const node = nodeById.get(nodeId);
+      return getColorFamilyForPatternKey(node?.patternKey as PatternKey).border;
+    },
+    [nodeById],
+  );
+
+  const activeCommand = consolidationVisuals?.activeCommand ?? null;
+  const activeCommandNodeIds = useMemo(() => {
+    if (!activeCommand) {
+      return new Set<string>();
+    }
+
+    switch (activeCommand.kind) {
+      case "replay-chain":
+        return new Set(activeCommand.episodeNodeIds);
+      case "rule-promotion":
+        return new Set([...activeCommand.sourceEpisodeNodeIds, activeCommand.ruleNodeId]);
+      case "salience-shift":
+        return new Set([activeCommand.episodeNodeId]);
+      case "contradiction-flash":
+        return new Set([activeCommand.leftNodeId, activeCommand.rightNodeId]);
+      default:
+        return new Set<string>();
+    }
+  }, [activeCommand]);
+
   const activeEdges = useMemo(() => {
     if (!activeNodeId) {
       return [];
@@ -224,21 +285,61 @@ export function BrainGraph({
     return edges.filter((edge) => edge.source === activeNodeId || edge.target === activeNodeId);
   }, [activeNodeId, edges]);
 
+  const consolidationEdges = useMemo(() => {
+    if (activeCommandNodeIds.size < 2) {
+      return [];
+    }
+
+    return edges.filter(
+      (edge) => activeCommandNodeIds.has(edge.source) && activeCommandNodeIds.has(edge.target),
+    );
+  }, [activeCommandNodeIds, edges]);
+
+  const visibleEdges = useMemo(() => {
+    const byId = new Map<string, BrainEdgeModel>();
+
+    for (const edge of activeEdges) {
+      byId.set(edge.id, edge);
+    }
+
+    for (const edge of consolidationEdges) {
+      byId.set(edge.id, edge);
+    }
+
+    return Array.from(byId.values());
+  }, [activeEdges, consolidationEdges]);
+
   return (
     <group>
-      {activeEdges.map((edge) => {
+      {visibleEdges.map((edge) => {
         const source = positions.get(edge.source);
         const target = positions.get(edge.target);
-        const sourceNode = nodeById.get(edge.source);
 
         if (!source || !target) {
           return null;
         }
 
-        const edgeColor = getColorFamilyForPatternKey(sourceNode?.patternKey as PatternKey).border;
-
-        return <NeuralEdge key={edge.id} from={source} to={target} weight={edge.weight} color={edgeColor} />;
+        return (
+          <NeuralEdge
+            key={edge.id}
+            from={source}
+            to={target}
+            weight={edge.weight}
+            color={getEdgeColor(edge.source)}
+            highlighted={highlightedEdgePairs.has(`${edge.source}->${edge.target}`)}
+          />
+        );
       })}
+
+      <ReplayOrchestrator
+        command={consolidationVisuals?.activeCommand ?? null}
+        commandEpoch={consolidationVisuals?.commandEpoch ?? 0}
+        positions={positions}
+        onActivateNode={handleActivateNode}
+        onHighlightEdge={handleHighlightEdge}
+        onClearEffects={handleClearEffects}
+        getEdgeColor={getEdgeColor}
+      />
 
       {positionedNodes.map((node) => {
         const isSelected = node.id === effectiveSelectedId;
@@ -270,6 +371,8 @@ export function BrainGraph({
               patternKey={node.patternKey}
               position={node.position}
               selected={isSelected || isHovered}
+              burstActive={activatedNodeMap.has(node.id)}
+              burstEpoch={activatedNodeEpoch}
               onHover={onHover}
               onClick={onClick}
             />
@@ -283,6 +386,8 @@ export function BrainGraph({
             position={node.position}
             salience={node.salience}
             selected={isSelected || isHovered}
+            activationMode={activatedNodeMap.get(node.id) ?? null}
+            activationEpoch={activatedNodeEpoch}
             pulsing={pulsingNodeIds?.has(node.id) ?? false}
             pulseEpoch={pulseEpoch}
             onHover={onHover}
