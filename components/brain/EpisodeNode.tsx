@@ -35,7 +35,7 @@ export function EpisodeNode({
   const pulseProgressRef = useRef(0);
   const lastPulseEpochRef = useRef(-1);
   const intensity = 0.35 + salience / 10;
-  const radius = 0.15 + (salience / 10) * 0.3;
+  const radius = 0.12 + (salience / 10) * 0.23;
   const baseScale = selected ? 1.25 : 1;
   const colorFamily = getColorFamilyForPatternKey(patternKey as PatternKey);
   const normalizedSalience = Math.max(0, Math.min(10, salience));
