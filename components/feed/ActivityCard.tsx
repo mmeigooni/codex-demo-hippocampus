@@ -1,20 +1,14 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { motion } from "motion/react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { ChevronDown } from "lucide-react";
 
-import { CodeSnippet } from "@/components/feed/CodeSnippet";
 import { ReasoningCard } from "@/components/feed/ReasoningCard";
 import { SalienceBadge } from "@/components/feed/SalienceBadge";
 import { TriggerPill } from "@/components/feed/TriggerPill";
-import {
-  getColorFamilyForPatternKey,
-  getColorFamilyForEpisode,
-  getColorFamilyForRule,
-  type ColorFamily,
-} from "@/lib/color/cluster-palette";
 import { entryDelay } from "@/lib/feed/entry-delay";
-import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
+import { resolveClusterColor } from "@/lib/feed/card-color";
 
 export interface ActivityEventView {
   id: string;
@@ -66,45 +60,15 @@ function resolveBorderClass(event: ActivityEventView) {
   return "border-zinc-700/80";
 }
 
-function normalizePatternKey(value: unknown): PatternKey | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  if (!PATTERN_KEYS.includes(value as PatternKey)) {
-    return null;
-  }
-
-  return value as PatternKey;
-}
-
-function resolvePatternKeyFromRaw(raw: Record<string, unknown>): PatternKey | null {
-  const episode = raw.episode;
-  if (episode && typeof episode === "object") {
-    const nestedPatternKey = normalizePatternKey((episode as Record<string, unknown>).pattern_key);
-    if (nestedPatternKey) {
-      return nestedPatternKey;
-    }
-  }
-
-  const topLevelPatternKey = normalizePatternKey(raw.pattern_key);
-  if (topLevelPatternKey) {
-    return topLevelPatternKey;
-  }
-
-  return normalizePatternKey(raw.rule_key);
-}
-
-function resolveClusterColor(graphNodeId: string, raw: Record<string, unknown>): ColorFamily {
-  const patternKey = resolvePatternKeyFromRaw(raw);
-  if (patternKey) {
-    return getColorFamilyForPatternKey(patternKey);
-  }
-
-  return graphNodeId.startsWith("rule-") ? getColorFamilyForRule(graphNodeId) : getColorFamilyForEpisode(graphNodeId);
-}
-
 export function ActivityCard({ event, index, selected = false, pinnedFromGraph = false, onSelect }: ActivityCardProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (pinnedFromGraph) {
+      setExpanded(true);
+    }
+  }, [pinnedFromGraph]);
+
   if (event.variant === "reasoning") {
     return (
       <ReasoningCard
@@ -177,46 +141,70 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
       tabIndex={selectable ? 0 : undefined}
       aria-pressed={selectable ? selected : undefined}
     >
-      <div className="flex items-center justify-between gap-2">
-        <p
-          className={`font-mono text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
-          style={clusterColor ? { color: clusterColor.accent } : undefined}
-        >
-          {event.type}
-        </p>
-        {event.salience !== undefined ? <SalienceBadge salience={event.salience} /> : null}
-      </div>
-
-      {pinnedFromGraph ? (
-        <p
-          className={`text-[10px] uppercase tracking-wider ${clusterColor ? "" : "text-cyan-200/90"}`}
-          style={clusterColor ? { color: clusterColor.textMuted } : undefined}
-        >
-          Selected from graph
-        </p>
-      ) : null}
-
-      <div>
-        <p className="text-sm font-medium text-zinc-100">{event.title}</p>
-        {event.subtitle ? <p className="text-xs text-zinc-400">{event.subtitle}</p> : null}
-      </div>
-
-      {event.triggers && event.triggers.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
-          {event.triggers.map((trigger) => (
-            <TriggerPill key={`${event.id}-${trigger}`} trigger={trigger} accentColor={clusterColor?.accentMuted} />
-          ))}
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 rounded-md px-1 py-0.5 text-left transition hover:bg-zinc-800/40"
+        onClick={(clickEvent) => {
+          clickEvent.stopPropagation();
+          setExpanded((current) => !current);
+        }}
+        aria-expanded={expanded}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <p
+            className={`shrink-0 font-mono text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
+            style={clusterColor ? { color: clusterColor.accent } : undefined}
+          >
+            {event.type}
+          </p>
+          <p className="truncate text-sm font-medium text-zinc-100">{event.title}</p>
         </div>
-      ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {clusterColor ? <span className="h-2 w-2 rounded-full" style={{ backgroundColor: clusterColor.accent }} /> : null}
+          {event.salience !== undefined ? <span className="text-xs text-zinc-500">{event.salience}</span> : null}
+          <ChevronDown className={`h-4 w-4 text-zinc-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </div>
+      </button>
 
-      {event.whyItMatters ? (
-        <p className="text-xs text-zinc-400 italic">
-          <span className="font-medium text-zinc-300 not-italic">Why it matters:</span>{" "}
-          {event.whyItMatters}
-        </p>
-      ) : null}
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-2 overflow-hidden"
+          >
+            {event.salience !== undefined ? <SalienceBadge salience={event.salience} /> : null}
 
-      {event.snippet ? <CodeSnippet snippet={event.snippet} /> : null}
+            {pinnedFromGraph ? (
+              <p
+                className={`text-[10px] uppercase tracking-wider ${clusterColor ? "" : "text-cyan-200/90"}`}
+                style={clusterColor ? { color: clusterColor.textMuted } : undefined}
+              >
+                Selected from graph
+              </p>
+            ) : null}
+
+            {event.subtitle ? <p className="text-xs text-zinc-400">{event.subtitle}</p> : null}
+
+            {event.triggers && event.triggers.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {event.triggers.map((trigger) => (
+                  <TriggerPill key={`${event.id}-${trigger}`} trigger={trigger} accentColor={clusterColor?.accentMuted} />
+                ))}
+              </div>
+            ) : null}
+
+            {event.whyItMatters ? (
+              <p className="text-xs text-zinc-400 italic">
+                <span className="font-medium text-zinc-300 not-italic">Why it matters:</span>{" "}
+                {event.whyItMatters}
+              </p>
+            ) : null}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </motion.article>
   );
 }
