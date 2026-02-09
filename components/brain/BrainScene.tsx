@@ -63,7 +63,7 @@ export function BrainScene({
               enablePan={false}
               enableRotate
               enableZoom
-              minDistance={6}
+              minDistance={5}
               maxDistance={15}
               minPolarAngle={Math.PI * 0.2}
               maxPolarAngle={Math.PI * 0.78}
@@ -71,7 +71,7 @@ export function BrainScene({
               autoRotateSpeed={0.35}
             />
             <EffectComposer>
-              <Bloom mipmapBlur luminanceThreshold={0.2} intensity={1.3} radius={0.65} />
+              <Bloom mipmapBlur luminanceThreshold={0.25} intensity={1.0} radius={0.65} />
             </EffectComposer>
           </Canvas>
         ) : (
