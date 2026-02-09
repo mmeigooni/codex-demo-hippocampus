@@ -8,7 +8,11 @@ import { AdditiveBlending } from "three";
 
 const PARTICLE_COUNT = 120;
 
-export function ParticleField() {
+interface ParticleFieldProps {
+  isConsolidating?: boolean;
+}
+
+export function ParticleField({ isConsolidating = false }: ParticleFieldProps) {
   const pixelRatio = useThree((state) => state.viewport.dpr);
   const sizes = useMemo(
     () =>
@@ -25,8 +29,8 @@ export function ParticleField() {
         count={PARTICLE_COUNT}
         scale={[11, 8, 11]}
         size={sizes}
-        speed={0.08}
-        opacity={0.34}
+        speed={isConsolidating ? 0.04 : 0.08}
+        opacity={isConsolidating ? 0.45 : 0.34}
         color="#7dd3fc"
         noise={0.2}
       >
