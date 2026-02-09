@@ -11,7 +11,12 @@ import type {
   PositionedBrainNode,
 } from "@/components/brain/types";
 import { getColorFamilyForPatternKey } from "@/lib/color/cluster-palette";
-import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
+import {
+  getSuperCategoryForPattern,
+  type PatternKey,
+  SUPER_CATEGORY_KEYS,
+  type SuperCategory,
+} from "@/lib/memory/pattern-taxonomy";
 
 interface BrainGraphProps {
   nodes: BrainNodeModel[];
@@ -28,84 +33,148 @@ interface BrainGraphProps {
 function computeLayoutNodes(nodes: BrainNodeModel[], edges: BrainEdgeModel[]) {
   const positions = new Map<string, [number, number, number]>();
   const vectors = new Map<string, { x: number; y: number; z: number }>();
-  const attachedEdgesByNode = new Map<string, BrainEdgeModel[]>();
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const islandCenterByCategory = new Map<SuperCategory, { x: number; y: number; z: number }>();
+  const ruleAnchorById = new Map<string, { x: number; y: number; z: number }>();
+  const groupedNodes = new Map<SuperCategory, { rules: BrainNodeModel[]; episodes: BrainNodeModel[] }>(
+    SUPER_CATEGORY_KEYS.map((category) => [category, { rules: [], episodes: [] }] as const),
+  );
 
-  for (const edge of edges) {
-    const sourceAttached = attachedEdgesByNode.get(edge.source) ?? [];
-    sourceAttached.push(edge);
-    attachedEdgesByNode.set(edge.source, sourceAttached);
+  const islandRadius = 3.2;
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
 
-    const targetAttached = attachedEdgesByNode.get(edge.target) ?? [];
-    targetAttached.push(edge);
-    attachedEdgesByNode.set(edge.target, targetAttached);
+  const resolveSuperCategory = (node: BrainNodeModel): SuperCategory => {
+    const mapped = getSuperCategoryForPattern(node.patternKey as PatternKey) as SuperCategory | undefined;
+    if (mapped && SUPER_CATEGORY_KEYS.includes(mapped)) {
+      return mapped;
+    }
+
+    return "flow";
+  };
+
+  for (const [index, category] of SUPER_CATEGORY_KEYS.entries()) {
+    const angle = (index / SUPER_CATEGORY_KEYS.length) * Math.PI * 2;
+    islandCenterByCategory.set(category, {
+      x: Math.cos(angle) * islandRadius,
+      y: 0,
+      z: Math.sin(angle) * islandRadius,
+    });
   }
 
-  nodes.forEach((node, index) => {
-    const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2;
-    const radius = node.type === "rule" ? 2.3 : 3.6;
-    vectors.set(node.id, {
-      x: Math.cos(angle) * radius,
-      y: (index % 3) - 1,
-      z: Math.sin(angle) * radius,
+  for (const node of nodes) {
+    const category = resolveSuperCategory(node);
+    const grouped = groupedNodes.get(category);
+    if (!grouped) continue;
+
+    if (node.type === "rule") {
+      grouped.rules.push(node);
+    } else {
+      grouped.episodes.push(node);
+    }
+  }
+
+  const connectedRuleIdByEpisode = new Map<string, string>();
+  for (const edge of edges) {
+    if (connectedRuleIdByEpisode.has(edge.source) || connectedRuleIdByEpisode.has(edge.target)) {
+      continue;
+    }
+
+    const sourceNode = nodeById.get(edge.source);
+    const targetNode = nodeById.get(edge.target);
+
+    if (sourceNode?.type === "episode" && targetNode?.type === "rule") {
+      connectedRuleIdByEpisode.set(sourceNode.id, targetNode.id);
+    } else if (sourceNode?.type === "rule" && targetNode?.type === "episode") {
+      connectedRuleIdByEpisode.set(targetNode.id, sourceNode.id);
+    }
+  }
+
+  for (const category of SUPER_CATEGORY_KEYS) {
+    const grouped = groupedNodes.get(category);
+    const islandCenter = islandCenterByCategory.get(category);
+    if (!grouped || !islandCenter) {
+      continue;
+    }
+
+    const ruleCount = grouped.rules.length;
+    const ruleRingRadius = ruleCount <= 1 ? 0.4 : 0.7;
+
+    grouped.rules.forEach((rule, index) => {
+      const angle = (index / Math.max(ruleCount, 1)) * Math.PI * 2;
+      const yOffset = ruleCount > 1 ? (index % 2 === 0 ? 0.08 : -0.08) : 0;
+
+      const vector = {
+        x: islandCenter.x + Math.cos(angle) * ruleRingRadius,
+        y: islandCenter.y + yOffset,
+        z: islandCenter.z + Math.sin(angle) * ruleRingRadius,
+      };
+
+      vectors.set(rule.id, vector);
+      ruleAnchorById.set(rule.id, vector);
     });
-  });
+  }
 
-  for (let iteration = 0; iteration < 80; iteration += 1) {
-    for (const node of nodes) {
-      const current = vectors.get(node.id);
-      if (!current) continue;
+  for (const category of SUPER_CATEGORY_KEYS) {
+    const grouped = groupedNodes.get(category);
+    const islandCenter = islandCenterByCategory.get(category);
+    if (!grouped || !islandCenter) {
+      continue;
+    }
 
-      let forceX = 0;
-      let forceY = 0;
-      let forceZ = 0;
+    const episodesByAnchor = new Map<string, BrainNodeModel[]>();
 
-      for (const other of nodes) {
-        if (other.id === node.id) continue;
-        const otherVector = vectors.get(other.id);
-        if (!otherVector) continue;
+    for (const episode of grouped.episodes) {
+      const connectedRuleId = connectedRuleIdByEpisode.get(episode.id);
+      const anchorId = connectedRuleId && ruleAnchorById.has(connectedRuleId) ? connectedRuleId : "__island__";
+      const anchorEpisodes = episodesByAnchor.get(anchorId) ?? [];
+      anchorEpisodes.push(episode);
+      episodesByAnchor.set(anchorId, anchorEpisodes);
+    }
 
-        const dx = current.x - otherVector.x;
-        const dy = current.y - otherVector.y;
-        const dz = current.z - otherVector.z;
-        const distSq = Math.max(0.01, dx * dx + dy * dy + dz * dz);
-        const repulsion = 0.012 / distSq;
+    for (const [anchorId, episodesForAnchor] of episodesByAnchor) {
+      const anchor = anchorId === "__island__" ? islandCenter : (ruleAnchorById.get(anchorId) ?? islandCenter);
+      const episodeCount = episodesForAnchor.length;
 
-        forceX += dx * repulsion;
-        forceY += dy * repulsion;
-        forceZ += dz * repulsion;
-      }
+      episodesForAnchor.forEach((episode, index) => {
+        const theta = index * goldenAngle;
+        const phi = Math.acos(1 - (2 * (index + 0.5)) / Math.max(episodeCount, 1));
+        const radius = anchorId === "__island__" ? 1.0 : 0.9 + (index % 3) * 0.2;
 
-      const attached = attachedEdgesByNode.get(node.id) ?? [];
-      for (const edge of attached) {
-        const otherId = edge.source === node.id ? edge.target : edge.source;
-        const otherVector = vectors.get(otherId);
-        if (!otherVector) continue;
-
-        forceX += (otherVector.x - current.x) * 0.004 * edge.weight;
-        forceY += (otherVector.y - current.y) * 0.004 * edge.weight;
-        forceZ += (otherVector.z - current.z) * 0.004 * edge.weight;
-      }
-
-      current.x += forceX;
-      current.y += forceY;
-      current.z += forceZ;
+        vectors.set(episode.id, {
+          x: anchor.x + radius * Math.sin(phi) * Math.cos(theta),
+          y: anchor.y + radius * Math.cos(phi),
+          z: anchor.z + radius * Math.sin(phi) * Math.sin(theta),
+        });
+      });
     }
   }
 
   for (const node of nodes) {
     const vector = vectors.get(node.id);
-    if (!vector) continue;
 
-    if (!Number.isFinite(vector.x) || !Number.isFinite(vector.y) || !Number.isFinite(vector.z)) {
+    const fallbackVector = (() => {
+      if (vector) {
+        return vector;
+      }
+
+      const category = resolveSuperCategory(node);
+      return islandCenterByCategory.get(category) ?? { x: 0, y: 0, z: 0 };
+    })();
+
+    if (
+      !Number.isFinite(fallbackVector.x) ||
+      !Number.isFinite(fallbackVector.y) ||
+      !Number.isFinite(fallbackVector.z)
+    ) {
       positions.set(node.id, [0, 0, 0]);
       continue;
     }
 
-    const magnitude = Math.hypot(vector.x, vector.y, vector.z);
+    const magnitude = Math.hypot(fallbackVector.x, fallbackVector.y, fallbackVector.z);
     const maxRadius = 4.6;
     const scale = magnitude > maxRadius ? maxRadius / magnitude : 1;
 
-    positions.set(node.id, [vector.x * scale, vector.y * scale, vector.z * scale]);
+    positions.set(node.id, [fallbackVector.x * scale, fallbackVector.y * scale, fallbackVector.z * scale]);
   }
 
   return positions;
@@ -144,12 +213,20 @@ export function BrainGraph({
   );
 
   const effectiveSelectedId = externalSelectedNodeId ?? selectedNodeId;
+  const activeNodeId = hoveredNodeId ?? effectiveSelectedId;
   const selectedNode = positionedNodes.find((node) => node.id === effectiveSelectedId) ?? null;
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const activeEdges = useMemo(() => {
+    if (!activeNodeId) {
+      return [];
+    }
+
+    return edges.filter((edge) => edge.source === activeNodeId || edge.target === activeNodeId);
+  }, [activeNodeId, edges]);
 
   return (
     <group>
-      {edges.map((edge) => {
+      {activeEdges.map((edge) => {
         const source = positions.get(edge.source);
         const target = positions.get(edge.target);
         const sourceNode = nodeById.get(edge.source);
@@ -216,7 +293,7 @@ export function BrainGraph({
 
       {selectedNode ? (
         <mesh position={selectedNode.position}>
-          <sphereGeometry args={[selectedNode.type === "rule" ? 0.6 : 0.5, 18, 18]} />
+          <sphereGeometry args={[selectedNode.type === "rule" ? 0.9 : 0.5, 18, 18]} />
           <meshBasicMaterial color="#e0f2fe" transparent opacity={0.08} />
         </mesh>
       ) : null}
