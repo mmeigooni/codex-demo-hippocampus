@@ -9,8 +9,8 @@ import type {
   CrossSelectionState,
   PositionedBrainNode,
 } from "@/components/brain/types";
-import { NeuralActivityFeed } from "@/components/feed/NeuralActivityFeed";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
+import { TwoColumnFeed } from "@/components/feed/TwoColumnFeed";
 import { ConsolidationCTA } from "@/components/onboarding/ConsolidationCTA";
 import { DistributionCTA } from "@/components/onboarding/DistributionCTA";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
@@ -19,8 +19,14 @@ import { useConsolidationStream } from "@/hooks/useConsolidationStream";
 import { useDistributionStream } from "@/hooks/useDistributionStream";
 import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent } from "@/lib/codex/types";
+import {
+  applyRulePromotedEvent,
+  groupAssociatedByRule,
+  partitionFeedEvents,
+  type AssociationMap,
+} from "@/lib/feed/association-state";
 import { graphNodeIdFromConsolidationEvent } from "@/lib/feed/cross-selection";
-import { groupImportActivityEvents, toImportActivityEvent } from "@/lib/feed/import-activity";
+import { toImportActivityEvent } from "@/lib/feed/import-activity";
 import {
   resolveImportStreamMode,
   stripReplayManifest,
@@ -272,6 +278,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [distributionRepoId, setDistributionRepoId] = useState<string | null>(null);
   const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string> | null>(null);
   const [visibleConsolidationNodeIds, setVisibleConsolidationNodeIds] = useState<Set<string> | null>(null);
+  const [associations, setAssociations] = useState<AssociationMap>(new Map());
   const [crossSelection, setCrossSelection] = useState<CrossSelectionState>({
     selectedNodeId: null,
     source: "feed",
@@ -305,11 +312,9 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   } = useDistributionStream();
 
   const activityEvents = useMemo(() => {
-    const importActivityEvents = groupImportActivityEvents(
-      events
-        .map((event, index) => toImportActivityEvent(event, index))
-        .filter((event): event is ActivityEventView => event !== null),
-    );
+    const importActivityEvents = events
+      .map((event, index) => toImportActivityEvent(event, index))
+      .filter((event): event is ActivityEventView => event !== null);
     const consolidationActivityEvents = consolidationEvents
       .map((event, index) => consolidationEventToActivity(event, index))
       .filter((event): event is ActivityEventView => event !== null);
@@ -382,6 +387,16 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     phase,
     reasoningText,
   ]);
+
+  const { unassociated: unassociatedEvents, associated: associatedEvents } = useMemo(
+    () => partitionFeedEvents(activityEvents, associations),
+    [activityEvents, associations],
+  );
+
+  const associatedGroups = useMemo(
+    () => groupAssociatedByRule(associatedEvents, associations),
+    [associatedEvents, associations],
+  );
 
   const statusText = useMemo(() => {
     const activeError = error ?? consolidationError ?? distributionResult?.error ?? null;
@@ -620,6 +635,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setStorageMode(null);
     setVisibleNodeIds(new Set());
     setVisibleConsolidationNodeIds(null);
+    setAssociations(new Map());
     setCrossSelection({ selectedNodeId: null, source: "feed" });
     setPhase("importing");
 
@@ -835,6 +851,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
       if (event.type === "rule_promoted") {
         const eventData = event.data as Record<string, unknown>;
+        setAssociations((current) => applyRulePromotedEvent(current, eventData));
         const ruleId = eventData.rule_id;
         if (typeof ruleId === "string" && ruleId.length > 0) {
           revealedRuleNodeIds.push(`rule-${ruleId}`);
@@ -1021,7 +1038,17 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
             <p className="text-xs text-amber-100/90">Run Sleep Cycle to generate rules.</p>
           ) : null}
 
-          <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+          <div className="grid gap-4 xl:grid-cols-[1fr_1.6fr]">
+            <div className="max-h-[540px] overflow-hidden px-1">
+              <TwoColumnFeed
+                unassociated={unassociatedEvents}
+                associated={associatedGroups}
+                maxItems={14}
+                selectedNodeId={crossSelection.selectedNodeId}
+                selectionSource={crossSelection.selectedNodeId ? crossSelection.source : null}
+                onSelectEvent={handleFeedSelection}
+              />
+            </div>
             <BrainScene
               nodes={displayNodes}
               edges={displayEdges}
@@ -1030,15 +1057,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
               externalSelectedNodeId={crossSelection.selectedNodeId}
               onNodeSelectionCommit={handleGraphSelectionCommit}
             />
-            <div className="max-h-[440px] overflow-auto px-1">
-              <NeuralActivityFeed
-                events={activityEvents}
-                maxItems={14}
-                selectedNodeId={crossSelection.selectedNodeId}
-                selectionSource={crossSelection.selectedNodeId ? crossSelection.source : null}
-                onSelectEvent={handleFeedSelection}
-              />
-            </div>
           </div>
         </CardContent>
       </Card>
