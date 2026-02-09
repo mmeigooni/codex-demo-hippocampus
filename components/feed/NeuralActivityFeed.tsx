@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 
 import { ActivityCard, type ActivityEventView } from "@/components/feed/ActivityCard";
 import { PRGroupCard } from "@/components/feed/PRGroupCard";
@@ -82,8 +82,17 @@ export function NeuralActivityFeed({
             const selected = activityEventMatchesNodeId(event, selectedNodeId);
 
             return (
-              <div
+              <motion.div
                 key={event.id}
+                layout="position"
+                transition={{
+                  layout: {
+                    type: "spring",
+                    stiffness: 140,
+                    damping: 22,
+                    mass: 0.8,
+                  },
+                }}
                 ref={(element) => {
                   eventElementMapRef.current.set(event.id, element);
                 }}
@@ -138,7 +147,7 @@ export function NeuralActivityFeed({
                     onSelect={onSelectEvent}
                   />
                 )}
-              </div>
+              </motion.div>
             );
           })
         )}

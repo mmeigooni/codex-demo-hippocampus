@@ -3,13 +3,16 @@
 import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
 
+import { entryDelay } from "@/lib/feed/entry-delay";
+
 interface ReasoningCardProps {
   text: string;
   isActive: boolean;
+  eventId?: string;
   index: number;
 }
 
-export function ReasoningCard({ text, isActive, index }: ReasoningCardProps) {
+export function ReasoningCard({ text, isActive, eventId, index }: ReasoningCardProps) {
   const textContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -27,7 +30,12 @@ export function ReasoningCard({ text, isActive, index }: ReasoningCardProps) {
     <motion.article
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.26, delay: index * 0.04 }}
+      transition={{
+        type: "spring",
+        damping: 24,
+        stiffness: 180,
+        delay: entryDelay(eventId ?? `reasoning-${index}`, index),
+      }}
       className="space-y-3 rounded-lg border border-indigo-500/30 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 p-3 [contain-intrinsic-size:220px] [content-visibility:auto]"
     >
       <div className="flex items-center justify-between gap-2">

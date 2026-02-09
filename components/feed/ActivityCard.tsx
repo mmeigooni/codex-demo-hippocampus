@@ -12,6 +12,7 @@ import {
   getColorFamilyForRule,
   type ColorFamily,
 } from "@/lib/color/cluster-palette";
+import { entryDelay } from "@/lib/feed/entry-delay";
 
 export interface ActivityEventView {
   id: string;
@@ -75,6 +76,7 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
       <ReasoningCard
         text={event.reasoningText ?? ""}
         isActive={Boolean(event.isStreamingReasoning)}
+        eventId={event.id}
         index={index}
       />
     );
@@ -112,7 +114,12 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
     <motion.article
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.26, delay: index * 0.04 }}
+      transition={{
+        type: "spring",
+        damping: 24,
+        stiffness: 180,
+        delay: entryDelay(event.id, index),
+      }}
       className={`space-y-3 rounded-lg border ${resolveBorderClass(event)} bg-zinc-900/70 p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
         selectable
           ? `cursor-pointer transition-colors ${clusterColor ? "hover:bg-zinc-900/85" : "hover:border-cyan-300/55 hover:bg-zinc-900/85"}`
