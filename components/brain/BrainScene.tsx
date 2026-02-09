@@ -33,7 +33,7 @@ export function BrainScene({
   const hasGraphData = useMemo(() => nodes.length > 0, [nodes.length]);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+    <div className="space-y-3">
       <div className="h-[440px] overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(circle_at_top,_#042f2e_0%,_#020617_65%)]">
         {hasGraphData ? (
           <Canvas camera={{ position: [0, 2, 10], fov: 55 }}>
