@@ -869,20 +869,29 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   }, [cancelImportReplay]);
 
   const displayNodes = useMemo(() => {
-    if (!visibleNodeIds) {
-      return graph.nodes;
+    let nodes = visibleNodeIds
+      ? graph.nodes.filter((node) => visibleNodeIds.has(node.id))
+      : graph.nodes;
+
+    if (PHASE_ORDER[phase] < PHASE_ORDER.consolidating) {
+      nodes = nodes.filter((node) => node.type !== "rule");
     }
 
-    return graph.nodes.filter((node) => visibleNodeIds.has(node.id));
-  }, [graph.nodes, visibleNodeIds]);
+    return nodes;
+  }, [graph.nodes, phase, visibleNodeIds]);
 
   const displayEdges = useMemo(() => {
-    if (!visibleNodeIds) {
-      return graph.edges;
+    let edges = visibleNodeIds
+      ? graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+      : graph.edges;
+
+    if (PHASE_ORDER[phase] < PHASE_ORDER.consolidating) {
+      const ruleNodeIds = new Set(graph.nodes.filter((node) => node.type === "rule").map((node) => node.id));
+      edges = edges.filter((edge) => !ruleNodeIds.has(edge.source) && !ruleNodeIds.has(edge.target));
     }
 
-    return graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target));
-  }, [graph.edges, visibleNodeIds]);
+    return edges;
+  }, [graph.edges, graph.nodes, phase, visibleNodeIds]);
 
   const noConsolidatedRules = activeSelection && !graphLoading && graph.stats.ruleCount === 0;
 
@@ -920,7 +929,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         demoRepoFullName={demoRepoFullName}
         onSelectRepo={startImport}
         disabled={phase === "importing" || phase === "consolidating" || phase === "distributing"}
-        collapsed={phase === "importing"}
+        collapsed={PHASE_ORDER[phase] >= PHASE_ORDER.importing && phase !== "error"}
         activeRepoName={activeRepo ?? undefined}
       />
 
