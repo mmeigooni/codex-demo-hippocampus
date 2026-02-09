@@ -278,12 +278,15 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [distributionRepoId, setDistributionRepoId] = useState<string | null>(null);
   const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string> | null>(null);
   const [visibleConsolidationNodeIds, setVisibleConsolidationNodeIds] = useState<Set<string> | null>(null);
+  const [pulsingNodeIds, setPulsingNodeIds] = useState<Set<string> | null>(null);
+  const [pulseEpoch, setPulseEpoch] = useState(0);
   const [associations, setAssociations] = useState<AssociationMap>(new Map());
   const [crossSelection, setCrossSelection] = useState<CrossSelectionState>({
     selectedNodeId: null,
     source: "feed",
   });
   const graphRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedConsolidationEventCountRef = useRef(0);
   const importReplaySelectionRef = useRef<ImportRepoRequest | null>(null);
   const importReplayRunIdRef = useRef<number | null>(null);
@@ -635,6 +638,12 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setStorageMode(null);
     setVisibleNodeIds(new Set());
     setVisibleConsolidationNodeIds(null);
+    if (pulseTimeoutRef.current) {
+      clearTimeout(pulseTimeoutRef.current);
+      pulseTimeoutRef.current = null;
+    }
+    setPulsingNodeIds(null);
+    setPulseEpoch(0);
     setAssociations(new Map());
     setCrossSelection({ selectedNodeId: null, source: "feed" });
     setPhase("importing");
@@ -763,6 +772,12 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setConsolidationRepoId(activeRepoId);
     setDistributionRepoId(null);
     setVisibleConsolidationNodeIds(new Set());
+    if (pulseTimeoutRef.current) {
+      clearTimeout(pulseTimeoutRef.current);
+      pulseTimeoutRef.current = null;
+    }
+    setPulsingNodeIds(null);
+    setPulseEpoch(0);
     setPhase("consolidating");
     await runConsolidation(activeRepoId);
   };
@@ -858,6 +873,37 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         }
       }
 
+      if (event.type === "pattern_detected") {
+        const eventData = event.data as Record<string, unknown>;
+        const episodeIds = eventData.episode_ids;
+
+        if (Array.isArray(episodeIds)) {
+          const nodeIds = episodeIds
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+            .map((id) => `episode-${id}`);
+
+          if (nodeIds.length > 0) {
+            setPulsingNodeIds((current) => {
+              const next = new Set(current ?? []);
+              for (const nodeId of nodeIds) {
+                next.add(nodeId);
+              }
+              return next;
+            });
+            setPulseEpoch((current) => current + 1);
+
+            if (pulseTimeoutRef.current) {
+              clearTimeout(pulseTimeoutRef.current);
+            }
+
+            pulseTimeoutRef.current = setTimeout(() => {
+              setPulsingNodeIds(null);
+              pulseTimeoutRef.current = null;
+            }, 2000);
+          }
+        }
+      }
+
       if (event.type === "consolidation_complete") {
         shouldRefreshImmediately = true;
         shouldRevealAllRules = true;
@@ -909,6 +955,10 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     return () => {
       if (graphRefreshDebounceRef.current) {
         clearTimeout(graphRefreshDebounceRef.current);
+      }
+
+      if (pulseTimeoutRef.current) {
+        clearTimeout(pulseTimeoutRef.current);
       }
 
       cancelImportReplay();
@@ -1054,6 +1104,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
               edges={displayEdges}
               layoutNodes={graph.nodes}
               layoutEdges={graph.edges}
+              pulsingNodeIds={pulsingNodeIds}
+              pulseEpoch={pulseEpoch}
               externalSelectedNodeId={crossSelection.selectedNodeId}
               onNodeSelectionCommit={handleGraphSelectionCommit}
             />
