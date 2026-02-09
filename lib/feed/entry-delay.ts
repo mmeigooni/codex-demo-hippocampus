@@ -1,5 +1,5 @@
-const BASE_STAGGER_SECONDS = 0.06;
-const MAX_JITTER_MS = 80;
+const BASE_STAGGER_SECONDS = 0.12;
+const MAX_JITTER_MS = 150;
 
 function hashString(input: string): number {
   let hash = 0;
