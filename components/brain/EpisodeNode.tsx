@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import type { Group, MeshBasicMaterial, MeshPhysicalMaterial } from "three";
+import type { Group, MeshBasicMaterial } from "three";
 
 import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
 import { getColorFamilyForPatternKey } from "@/lib/color/cluster-palette";
@@ -29,19 +29,18 @@ export function EpisodeNode({
   onClick,
 }: EpisodeNodeProps) {
   const groupRef = useRef<Group>(null);
-  const coreMaterialRef = useRef<MeshPhysicalMaterial>(null);
-  const glowMaterialRef = useRef<MeshBasicMaterial>(null);
+  const latticeMaterialRef = useRef<MeshBasicMaterial>(null);
+  const haloMaterialRef = useRef<MeshBasicMaterial>(null);
   const spawnProgressRef = useRef(0);
   const pulseProgressRef = useRef(0);
   const lastPulseEpochRef = useRef(-1);
-  const intensity = 0.35 + salience / 10;
-  const radius = 0.12 + (salience / 10) * 0.23;
+  const radius = 0.32 + (salience / 10) * 0.04;
   const baseScale = selected ? 1.25 : 1;
   const colorFamily = getColorFamilyForPatternKey(patternKey as PatternKey);
   const normalizedSalience = Math.max(0, Math.min(10, salience));
-  const glowOpacity = 0.03 + (normalizedSalience / 10) * 0.09;
-  const baseEmissiveIntensity = selected ? intensity + 0.35 : intensity;
-  const baseGlowOpacity = selected ? Math.min(0.14, glowOpacity + 0.02) : glowOpacity;
+  const latticeOpacity = 0.2 + (normalizedSalience / 10) * 0.18;
+  const baseLatticeOpacity = selected ? Math.min(0.55, latticeOpacity + 0.09) : latticeOpacity;
+  const baseHaloOpacity = selected ? 0.2 : 0.12;
 
   useFrame((_, delta) => {
     if (!groupRef.current) {
@@ -66,12 +65,12 @@ export function EpisodeNode({
       groupRef.current.scale.setScalar(baseScale);
     }
 
-    if (coreMaterialRef.current) {
-      coreMaterialRef.current.emissiveIntensity = baseEmissiveIntensity + pulseIntensity;
+    if (latticeMaterialRef.current) {
+      latticeMaterialRef.current.opacity = Math.min(0.6, baseLatticeOpacity + pulseIntensity * 0.08);
     }
 
-    if (glowMaterialRef.current) {
-      glowMaterialRef.current.opacity = baseGlowOpacity + pulseIntensity * 0.08;
+    if (haloMaterialRef.current) {
+      haloMaterialRef.current.opacity = Math.min(0.3, baseHaloOpacity + pulseIntensity * 0.09);
     }
   });
 
@@ -101,26 +100,25 @@ export function EpisodeNode({
       onClick={onClick}
     >
       <mesh>
-        <sphereGeometry args={[radius, 24, 24]} />
-        <meshPhysicalMaterial
-          ref={coreMaterialRef}
-          color={selected ? colorFamily.accent : colorFamily.border}
-          emissive={selected ? colorFamily.accentMuted : colorFamily.bgMuted}
-          emissiveIntensity={baseEmissiveIntensity}
-          clearcoat={0.8}
-          clearcoatRoughness={0.25}
-          roughness={0.35}
-          metalness={0.1}
-          toneMapped={false}
-        />
-      </mesh>
-      <mesh scale={1.08}>
-        <sphereGeometry args={[radius, 24, 24]} />
+        <icosahedronGeometry args={[radius, 1]} />
         <meshBasicMaterial
-          ref={glowMaterialRef}
+          ref={latticeMaterialRef}
+          wireframe
           color={selected ? colorFamily.accent : colorFamily.border}
           transparent
-          opacity={baseGlowOpacity}
+          opacity={baseLatticeOpacity}
+          toneMapped={false}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh scale={1.12}>
+        <icosahedronGeometry args={[radius, 1]} />
+        <meshBasicMaterial
+          ref={haloMaterialRef}
+          color={selected ? colorFamily.accent : colorFamily.border}
+          wireframe
+          transparent
+          opacity={baseHaloOpacity}
           toneMapped={false}
           depthWrite={false}
         />

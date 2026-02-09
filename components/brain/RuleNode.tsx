@@ -20,6 +20,8 @@ export function RuleNode({ patternKey, position, selected, onHover, onClick }: R
   const spawnProgressRef = useRef(0);
   const baseScale = selected ? 1.25 : 1;
   const colorFamily = getColorFamilyForPatternKey(patternKey as PatternKey);
+  const latticeRadius = 0.42;
+  const coreRadius = latticeRadius * 0.5;
 
   useFrame((_, delta) => {
     if (!groupRef.current) {
@@ -54,35 +56,38 @@ export function RuleNode({ patternKey, position, selected, onHover, onClick }: R
       onClick={onClick}
     >
       <mesh>
-        <octahedronGeometry args={[0.65, 0]} />
+        <sphereGeometry args={[coreRadius, 20, 20]} />
         <meshPhysicalMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
-          emissive={selected ? colorFamily.accentMuted : colorFamily.bgMuted}
-          emissiveIntensity={selected ? 1.5 : 1.0}
+          emissive={selected ? colorFamily.accent : colorFamily.border}
+          emissiveIntensity={selected ? 2.1 : 1.6}
           clearcoat={1}
-          clearcoatRoughness={0.15}
-          roughness={0.25}
-          metalness={0.15}
+          clearcoatRoughness={0.2}
+          roughness={0.35}
+          metalness={0.05}
+          transparent
+          opacity={0.95}
           toneMapped={false}
         />
       </mesh>
-      <mesh scale={1.3}>
-        <icosahedronGeometry args={[0.65, 1]} />
+      <mesh>
+        <icosahedronGeometry args={[latticeRadius, 1]} />
         <meshBasicMaterial
           wireframe
-          color={colorFamily.border}
+          color={selected ? colorFamily.accent : colorFamily.border}
           transparent
-          opacity={selected ? 0.35 : 0.2}
+          opacity={selected ? 0.48 : 0.34}
           toneMapped={false}
           depthWrite={false}
         />
       </mesh>
-      <mesh scale={1.06}>
-        <octahedronGeometry args={[0.65, 0]} />
+      <mesh scale={1.12}>
+        <icosahedronGeometry args={[latticeRadius, 1]} />
         <meshBasicMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
+          wireframe
           transparent
-          opacity={selected ? 0.08 : 0.06}
+          opacity={selected ? 0.2 : 0.12}
           toneMapped={false}
           depthWrite={false}
         />
