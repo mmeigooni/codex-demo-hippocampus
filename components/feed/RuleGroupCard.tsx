@@ -127,15 +127,7 @@ export function RuleGroupCard({
       tabIndex={selectable ? 0 : undefined}
       aria-pressed={selectable ? selected : undefined}
     >
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-3 rounded-md px-1 py-0.5 text-left transition hover:bg-zinc-800/40"
-        onClick={(clickEvent) => {
-          clickEvent.stopPropagation();
-          setExpanded((current) => !current);
-        }}
-        aria-expanded={expanded}
-      >
+      <div className="flex items-center justify-between gap-3 rounded-md px-1 py-0.5">
         <div className="flex min-w-0 items-center gap-2">
           <Sparkles className="h-4 w-4 shrink-0" style={{ color: colorFamily.accent }} />
           <p className="shrink-0 font-mono text-xs uppercase tracking-wide" style={{ color: colorFamily.accent }}>
@@ -147,12 +139,23 @@ export function RuleGroupCard({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colorFamily.accent }} />
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            style={{ color: colorFamily.textMuted }}
-          />
+          <button
+            type="button"
+            className="rounded p-0.5 transition hover:bg-zinc-800/60"
+            onClick={(clickEvent) => {
+              clickEvent.stopPropagation();
+              setExpanded((current) => !current);
+            }}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse details" : "Expand details"}
+          >
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+              style={{ color: colorFamily.textMuted }}
+            />
+          </button>
         </div>
-      </button>
+      </div>
 
       <AnimatePresence initial={false}>
         {expanded ? (
