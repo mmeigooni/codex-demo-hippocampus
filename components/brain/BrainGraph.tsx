@@ -18,6 +18,8 @@ interface BrainGraphProps {
   edges: BrainEdgeModel[];
   layoutNodes?: BrainNodeModel[];
   layoutEdges?: BrainEdgeModel[];
+  pulsingNodeIds?: Set<string> | null;
+  pulseEpoch?: number;
   externalSelectedNodeId?: string | null;
   onSelectedNodeChange?: (node: PositionedBrainNode | null) => void;
   onNodeSelectionCommit?: (node: PositionedBrainNode | null) => void;
@@ -114,6 +116,8 @@ export function BrainGraph({
   edges,
   layoutNodes,
   layoutEdges,
+  pulsingNodeIds,
+  pulseEpoch,
   externalSelectedNodeId,
   onSelectedNodeChange,
   onNodeSelectionCommit,
@@ -202,6 +206,8 @@ export function BrainGraph({
             position={node.position}
             salience={node.salience}
             selected={isSelected || isHovered}
+            pulsing={pulsingNodeIds?.has(node.id) ?? false}
+            pulseEpoch={pulseEpoch}
             onHover={onHover}
             onClick={onClick}
           />
