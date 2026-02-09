@@ -2,11 +2,18 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import type { Group, Mesh, MeshBasicMaterial } from "three";
+import type {
+  Group,
+  LineBasicMaterial,
+  Mesh,
+  MeshBasicMaterial,
+  PointsMaterial,
+} from "three";
+import { Color } from "three";
 
-import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
+import { createFracturedHexPrism } from "@/components/brain/geometry/fractured-prism";
 import { getColorFamilyForPatternKey } from "@/lib/color/cluster-palette";
-import { createFracturedIcosahedron } from "@/components/brain/geometry/fractured-icosahedron";
+import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 type ActivationMode = "pulse" | "flash-warn" | "salience-shift";
 
@@ -24,6 +31,17 @@ interface EpisodeNodeProps {
   onClick: () => void;
 }
 
+function getBreathingPhase(nodeId: string): number {
+  let hash = 0;
+
+  for (let i = 0; i < nodeId.length; i += 1) {
+    hash = ((hash << 5) - hash) + nodeId.charCodeAt(i);
+    hash |= 0;
+  }
+
+  return (Math.abs(hash) % 628) / 100;
+}
+
 export function EpisodeNode({
   nodeId,
   patternKey,
@@ -38,11 +56,11 @@ export function EpisodeNode({
   onClick,
 }: EpisodeNodeProps) {
   const groupRef = useRef<Group>(null);
-  const meshRef = useRef<Mesh>(null);
-  const latticeMaterialRef = useRef<MeshBasicMaterial>(null);
+  const fillMaterialRef = useRef<MeshBasicMaterial>(null);
+  const edgeMaterialRef = useRef<LineBasicMaterial>(null);
+  const vertexMaterialRef = useRef<PointsMaterial>(null);
   const rippleRingRef = useRef<Mesh>(null);
   const rippleMaterialRef = useRef<MeshBasicMaterial>(null);
-  const originalPositionsRef = useRef<Float32Array | null>(null);
 
   const spawnProgressRef = useRef(0);
   const pulseProgressRef = useRef(0);
@@ -54,19 +72,38 @@ export function EpisodeNode({
   const lastFlashEpochRef = useRef(-1);
   const lastSalienceEpochRef = useRef(-1);
   const salienceStartOpacityRef = useRef(0);
-  const baseLatticeColorRef = useRef("");
 
-  const radius = 0.21;
+  const baseFillColorRef = useRef("");
+  const baseEdgeColorRef = useRef("");
+  const baseVertexColorRef = useRef("");
+
+  const prismRadius = 0.14;
+  const prismHeight = 0.2;
   const baseScale = selected ? 1.25 : 1;
+  const breathingPhase = useMemo(() => getBreathingPhase(nodeId), [nodeId]);
+
   const colorFamily = getColorFamilyForPatternKey(patternKey as PatternKey);
   const normalizedSalience = Math.max(0, Math.min(10, salience));
-  const latticeOpacity = 0.2 + (normalizedSalience / 10) * 0.18;
-  const baseLatticeOpacity = selected ? Math.min(0.55, latticeOpacity + 0.09) : latticeOpacity;
-  const baseLatticeColor = selected ? colorFamily.accent : colorFamily.border;
-  const removalFraction = 0.45 - (normalizedSalience / 10) * 0.25;
-  const fracturedGeo = useMemo(
-    () => createFracturedIcosahedron(radius, 1, nodeId, removalFraction),
-    [nodeId, radius, removalFraction],
+
+  const fillOpacity = 0.45 + (normalizedSalience / 10) * 0.33;
+  const baseFillOpacity = selected ? Math.min(0.9, fillOpacity + 0.08) : fillOpacity;
+  const baseEdgeOpacity = selected ? 0.95 : 0.8;
+  const baseVertexOpacity = selected ? 0.98 : 0.86;
+
+  const baseFillColor = selected ? colorFamily.accent : colorFamily.border;
+  const baseEdgeColor = useMemo(
+    () => new Color(baseFillColor).multiplyScalar(0.66).getStyle(),
+    [baseFillColor],
+  );
+  const baseVertexColor = useMemo(
+    () => new Color(baseFillColor).multiplyScalar(0.56).getStyle(),
+    [baseFillColor],
+  );
+
+  const removalFraction = 0.75 - (normalizedSalience / 10) * 0.4;
+  const fracturedPrism = useMemo(
+    () => createFracturedHexPrism(prismRadius, prismHeight, nodeId, removalFraction),
+    [nodeId, prismHeight, prismRadius, removalFraction],
   );
 
   useFrame((state, delta) => {
@@ -76,52 +113,51 @@ export function EpisodeNode({
     }
 
     let pulseIntensity = 0;
-    let latticeOpacityValue = baseLatticeOpacity;
+    let pulseScaleBoost = 0;
+    let fillOpacityValue = baseFillOpacity;
+    let edgeOpacityValue = baseEdgeOpacity;
+    let vertexOpacityValue = baseVertexOpacity;
     let shakeOffsetX = 0;
 
     if (spawnProgressRef.current < 1) {
       spawnProgressRef.current = Math.min(1, spawnProgressRef.current + delta * 3.5);
-      const eased = 1 - Math.pow(1 - spawnProgressRef.current, 3);
-      group.scale.setScalar(eased * baseScale);
     }
 
     if (pulseProgressRef.current > 0 && pulseProgressRef.current < 1) {
       pulseProgressRef.current = Math.min(1, pulseProgressRef.current + delta / 1.5);
       const pulseScale = Math.sin(pulseProgressRef.current * Math.PI);
-      pulseIntensity = pulseScale * 1.0;
-      group.scale.setScalar(baseScale * (1 + pulseScale * 0.15));
+      pulseIntensity = pulseScale;
+      pulseScaleBoost = pulseScale * 0.12;
     } else if (pulseProgressRef.current >= 1) {
       pulseProgressRef.current = 0;
-      if (spawnProgressRef.current >= 1) {
-        group.scale.setScalar(baseScale);
-      }
     }
 
     if (flashProgressRef.current > 0 && flashProgressRef.current < 1) {
       flashProgressRef.current = Math.min(1, flashProgressRef.current + delta / 0.6);
       shakeOffsetX = Math.sin(flashProgressRef.current * Math.PI * 6) * 0.08;
 
-      if (latticeMaterialRef.current) {
-        latticeMaterialRef.current.color.set("#ff6b35");
-      }
+      fillMaterialRef.current?.color.set("#ff6b35");
+      edgeMaterialRef.current?.color.set("#ff6b35");
+      vertexMaterialRef.current?.color.set("#ff6b35");
 
       if (flashProgressRef.current >= 1) {
         flashProgressRef.current = 0;
-        if (latticeMaterialRef.current) {
-          latticeMaterialRef.current.color.set(baseLatticeColorRef.current);
-        }
+        fillMaterialRef.current?.color.set(baseFillColorRef.current);
+        edgeMaterialRef.current?.color.set(baseEdgeColorRef.current);
+        vertexMaterialRef.current?.color.set(baseVertexColorRef.current);
       }
     }
 
     if (salienceProgressRef.current > 0 && salienceProgressRef.current < 1) {
       salienceProgressRef.current = Math.min(1, salienceProgressRef.current + delta / 0.8);
       const t = salienceProgressRef.current;
-      const lerpedBase = salienceStartOpacityRef.current + (baseLatticeOpacity - salienceStartOpacityRef.current) * t;
-      latticeOpacityValue = Math.min(0.6, lerpedBase * (1 + 0.15 * Math.sin(t * Math.PI)));
+      const lerpedBase = salienceStartOpacityRef.current + (baseFillOpacity - salienceStartOpacityRef.current) * t;
+      fillOpacityValue = Math.min(0.9, lerpedBase * (1 + 0.15 * Math.sin(t * Math.PI)));
+      edgeOpacityValue = Math.min(1, baseEdgeOpacity + 0.06 * Math.sin(t * Math.PI));
+      vertexOpacityValue = Math.min(1, baseVertexOpacity + 0.08 * Math.sin(t * Math.PI));
 
       if (salienceProgressRef.current >= 1) {
         salienceProgressRef.current = 0;
-        latticeOpacityValue = baseLatticeOpacity;
       }
     }
 
@@ -150,52 +186,37 @@ export function EpisodeNode({
       }
     }
 
+    const breathingScale = 1 + Math.sin(state.clock.elapsedTime * 1.1 + breathingPhase) * 0.014;
+    const easedSpawn = 1 - Math.pow(1 - spawnProgressRef.current, 3);
+    const scaleMultiplier = breathingScale * (1 + pulseScaleBoost);
+
+    group.scale.setScalar(baseScale * scaleMultiplier * easedSpawn);
     group.position.set(position[0] + shakeOffsetX, position[1], position[2]);
 
-    if (latticeMaterialRef.current) {
-      latticeMaterialRef.current.opacity = Math.min(0.6, latticeOpacityValue + pulseIntensity * 0.08);
+    if (fillMaterialRef.current) {
+      fillMaterialRef.current.opacity = Math.min(0.95, fillOpacityValue + pulseIntensity * 0.08);
     }
 
-    const mesh = meshRef.current;
-    if (mesh) {
-      const positionAttribute = mesh.geometry.getAttribute("position");
+    if (edgeMaterialRef.current) {
+      edgeMaterialRef.current.opacity = Math.min(1, edgeOpacityValue + pulseIntensity * 0.05);
+    }
 
-      if (
-        !originalPositionsRef.current ||
-        originalPositionsRef.current.length !== positionAttribute.array.length
-      ) {
-        originalPositionsRef.current = new Float32Array(positionAttribute.array);
-      }
-
-      const original = originalPositionsRef.current;
-      if (!original) {
-        return;
-      }
-
-      const time = state.clock.elapsedTime;
-      const noiseAmp = 0.008 + pulseIntensity * 0.012;
-
-      for (let i = 0; i < positionAttribute.count; i += 1) {
-        const phase = i * 0.7;
-        positionAttribute.setXYZ(
-          i,
-          original[i * 3] + Math.sin(time * 1.2 + phase) * noiseAmp,
-          original[i * 3 + 1] + Math.sin(time * 0.9 + phase * 1.3) * noiseAmp * 0.7,
-          original[i * 3 + 2] + Math.sin(time * 1.1 + phase * 0.8) * noiseAmp * 0.9,
-        );
-      }
-
-      positionAttribute.needsUpdate = true;
+    if (vertexMaterialRef.current) {
+      vertexMaterialRef.current.opacity = Math.min(1, vertexOpacityValue + pulseIntensity * 0.07);
     }
   });
 
   useEffect(() => {
-    baseLatticeColorRef.current = baseLatticeColor;
+    baseFillColorRef.current = baseFillColor;
+    baseEdgeColorRef.current = baseEdgeColor;
+    baseVertexColorRef.current = baseVertexColor;
 
-    if (flashProgressRef.current === 0 && latticeMaterialRef.current) {
-      latticeMaterialRef.current.color.set(baseLatticeColor);
+    if (flashProgressRef.current === 0) {
+      fillMaterialRef.current?.color.set(baseFillColor);
+      edgeMaterialRef.current?.color.set(baseEdgeColor);
+      vertexMaterialRef.current?.color.set(baseVertexColor);
     }
-  }, [baseLatticeColor]);
+  }, [baseEdgeColor, baseFillColor, baseVertexColor]);
 
   useEffect(() => {
     if (rippleRingRef.current) {
@@ -206,10 +227,11 @@ export function EpisodeNode({
 
   useEffect(() => {
     return () => {
-      fracturedGeo.dispose();
-      originalPositionsRef.current = null;
+      fracturedPrism.solidGeometry.dispose();
+      fracturedPrism.edgeGeometry.dispose();
+      fracturedPrism.pointGeometry.dispose();
     };
-  }, [fracturedGeo]);
+  }, [fracturedPrism]);
 
   useEffect(() => {
     const shouldUseLegacyPulse = activationMode === undefined || activationMode === null;
@@ -239,12 +261,12 @@ export function EpisodeNode({
       activationEpoch !== undefined &&
       activationEpoch !== lastSalienceEpochRef.current
     ) {
-      salienceStartOpacityRef.current = latticeMaterialRef.current?.opacity ?? baseLatticeOpacity;
+      salienceStartOpacityRef.current = fillMaterialRef.current?.opacity ?? baseFillOpacity;
       salienceProgressRef.current = 0.001;
       rippleProgressRef.current = 0.001;
       lastSalienceEpochRef.current = activationEpoch;
     }
-  }, [activationEpoch, activationMode, baseLatticeOpacity]);
+  }, [activationEpoch, activationMode, baseFillOpacity]);
 
   useEffect(() => {
     if (!groupRef.current) {
@@ -264,19 +286,43 @@ export function EpisodeNode({
       onPointerOut={() => onHover(false)}
       onClick={onClick}
     >
-      <mesh ref={meshRef} geometry={fracturedGeo}>
+      <mesh geometry={fracturedPrism.solidGeometry}>
         <meshBasicMaterial
-          ref={latticeMaterialRef}
-          wireframe
-          color={baseLatticeColor}
+          ref={fillMaterialRef}
+          color={baseFillColor}
           transparent
-          opacity={baseLatticeOpacity}
+          opacity={baseFillOpacity}
           toneMapped={false}
           depthWrite={false}
         />
       </mesh>
+
+      <lineSegments geometry={fracturedPrism.edgeGeometry}>
+        <lineBasicMaterial
+          ref={edgeMaterialRef}
+          color={baseEdgeColor}
+          transparent
+          opacity={baseEdgeOpacity}
+          toneMapped={false}
+          depthWrite={false}
+        />
+      </lineSegments>
+
+      <points geometry={fracturedPrism.pointGeometry}>
+        <pointsMaterial
+          ref={vertexMaterialRef}
+          color={baseVertexColor}
+          size={0.024}
+          sizeAttenuation
+          transparent
+          opacity={baseVertexOpacity}
+          toneMapped={false}
+          depthWrite={false}
+        />
+      </points>
+
       <mesh ref={rippleRingRef} rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.18, 0.22, 24]} />
+        <ringGeometry args={[0.13, 0.17, 24]} />
         <meshBasicMaterial
           ref={rippleMaterialRef}
           color={colorFamily.accent}
