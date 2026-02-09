@@ -382,6 +382,7 @@ export function BrainGraph({
         return (
           <EpisodeNode
             key={node.id}
+            nodeId={node.id}
             patternKey={node.patternKey}
             position={node.position}
             salience={node.salience}

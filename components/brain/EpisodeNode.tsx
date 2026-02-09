@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group, Mesh, MeshBasicMaterial } from "three";
 
 import type { PatternKey } from "@/lib/memory/pattern-taxonomy";
 import { getColorFamilyForPatternKey } from "@/lib/color/cluster-palette";
+import { createFracturedIcosahedron } from "@/components/brain/geometry/fractured-icosahedron";
 
 type ActivationMode = "pulse" | "flash-warn" | "salience-shift";
 
 interface EpisodeNodeProps {
+  nodeId: string;
   patternKey: string;
   position: [number, number, number];
   salience: number;
@@ -23,6 +25,7 @@ interface EpisodeNodeProps {
 }
 
 export function EpisodeNode({
+  nodeId,
   patternKey,
   position,
   salience,
@@ -35,10 +38,11 @@ export function EpisodeNode({
   onClick,
 }: EpisodeNodeProps) {
   const groupRef = useRef<Group>(null);
+  const meshRef = useRef<Mesh>(null);
   const latticeMaterialRef = useRef<MeshBasicMaterial>(null);
-  const haloMaterialRef = useRef<MeshBasicMaterial>(null);
   const rippleRingRef = useRef<Mesh>(null);
   const rippleMaterialRef = useRef<MeshBasicMaterial>(null);
+  const originalPositionsRef = useRef<Float32Array | null>(null);
 
   const spawnProgressRef = useRef(0);
   const pulseProgressRef = useRef(0);
@@ -58,10 +62,14 @@ export function EpisodeNode({
   const normalizedSalience = Math.max(0, Math.min(10, salience));
   const latticeOpacity = 0.2 + (normalizedSalience / 10) * 0.18;
   const baseLatticeOpacity = selected ? Math.min(0.55, latticeOpacity + 0.09) : latticeOpacity;
-  const baseHaloOpacity = selected ? 0.2 : 0.12;
   const baseLatticeColor = selected ? colorFamily.accent : colorFamily.border;
+  const removalFraction = 0.45 - (normalizedSalience / 10) * 0.25;
+  const fracturedGeo = useMemo(
+    () => createFracturedIcosahedron(radius, 1, nodeId, removalFraction),
+    [nodeId, radius, removalFraction],
+  );
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const group = groupRef.current;
     if (!group) {
       return;
@@ -69,7 +77,6 @@ export function EpisodeNode({
 
     let pulseIntensity = 0;
     let latticeOpacityValue = baseLatticeOpacity;
-    let haloOpacityValue = baseHaloOpacity;
     let shakeOffsetX = 0;
 
     if (spawnProgressRef.current < 1) {
@@ -149,8 +156,36 @@ export function EpisodeNode({
       latticeMaterialRef.current.opacity = Math.min(0.6, latticeOpacityValue + pulseIntensity * 0.08);
     }
 
-    if (haloMaterialRef.current) {
-      haloMaterialRef.current.opacity = Math.min(0.3, haloOpacityValue + pulseIntensity * 0.09);
+    const mesh = meshRef.current;
+    if (mesh) {
+      const positionAttribute = mesh.geometry.getAttribute("position");
+
+      if (
+        !originalPositionsRef.current ||
+        originalPositionsRef.current.length !== positionAttribute.array.length
+      ) {
+        originalPositionsRef.current = new Float32Array(positionAttribute.array);
+      }
+
+      const original = originalPositionsRef.current;
+      if (!original) {
+        return;
+      }
+
+      const time = state.clock.elapsedTime;
+      const noiseAmp = 0.008 + pulseIntensity * 0.012;
+
+      for (let i = 0; i < positionAttribute.count; i += 1) {
+        const phase = i * 0.7;
+        positionAttribute.setXYZ(
+          i,
+          original[i * 3] + Math.sin(time * 1.2 + phase) * noiseAmp,
+          original[i * 3 + 1] + Math.sin(time * 0.9 + phase * 1.3) * noiseAmp * 0.7,
+          original[i * 3 + 2] + Math.sin(time * 1.1 + phase * 0.8) * noiseAmp * 0.9,
+        );
+      }
+
+      positionAttribute.needsUpdate = true;
     }
   });
 
@@ -168,6 +203,13 @@ export function EpisodeNode({
       rippleRingRef.current.scale.setScalar(0.001);
     }
   }, []);
+
+  useEffect(() => {
+    return () => {
+      fracturedGeo.dispose();
+      originalPositionsRef.current = null;
+    };
+  }, [fracturedGeo]);
 
   useEffect(() => {
     const shouldUseLegacyPulse = activationMode === undefined || activationMode === null;
@@ -222,26 +264,13 @@ export function EpisodeNode({
       onPointerOut={() => onHover(false)}
       onClick={onClick}
     >
-      <mesh>
-        <icosahedronGeometry args={[radius, 1]} />
+      <mesh ref={meshRef} geometry={fracturedGeo}>
         <meshBasicMaterial
           ref={latticeMaterialRef}
           wireframe
           color={baseLatticeColor}
           transparent
           opacity={baseLatticeOpacity}
-          toneMapped={false}
-          depthWrite={false}
-        />
-      </mesh>
-      <mesh scale={1.12}>
-        <icosahedronGeometry args={[radius, 1]} />
-        <meshBasicMaterial
-          ref={haloMaterialRef}
-          color={selected ? colorFamily.accent : colorFamily.border}
-          wireframe
-          transparent
-          opacity={baseHaloOpacity}
           toneMapped={false}
           depthWrite={false}
         />
