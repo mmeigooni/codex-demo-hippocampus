@@ -12,7 +12,7 @@ interface NeuralEdgeProps {
 }
 
 export function NeuralEdge({ from, to, weight, color = "#38bdf8" }: NeuralEdgeProps) {
-  const targetOpacity = Math.max(0.2, Math.min(0.85, weight));
+  const targetOpacity = Math.max(0.45, Math.min(0.9, weight));
   const [currentOpacity, setCurrentOpacity] = useState(0);
   const spawnProgressRef = useRef(0);
   const spawnGlowRef = useRef(1);
@@ -48,7 +48,7 @@ export function NeuralEdge({ from, to, weight, color = "#38bdf8" }: NeuralEdgePr
     <Line
       points={[from, to]}
       color={color}
-      lineWidth={1 + weight * 1.5}
+      lineWidth={1.5 + weight * 2}
       transparent
       opacity={currentOpacity}
     />
