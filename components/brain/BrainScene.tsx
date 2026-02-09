@@ -16,6 +16,8 @@ interface BrainSceneProps {
   edges: BrainEdgeModel[];
   layoutNodes?: BrainNodeModel[];
   layoutEdges?: BrainEdgeModel[];
+  pulsingNodeIds?: Set<string> | null;
+  pulseEpoch?: number;
   externalSelectedNodeId?: string | null;
   onNodeSelectionCommit?: (node: PositionedBrainNode | null) => void;
 }
@@ -25,6 +27,8 @@ export function BrainScene({
   edges,
   layoutNodes,
   layoutEdges,
+  pulsingNodeIds,
+  pulseEpoch,
   externalSelectedNodeId,
   onNodeSelectionCommit,
 }: BrainSceneProps) {
@@ -48,6 +52,8 @@ export function BrainScene({
               edges={edges}
               layoutNodes={layoutNodes}
               layoutEdges={layoutEdges}
+              pulsingNodeIds={pulsingNodeIds}
+              pulseEpoch={pulseEpoch}
               externalSelectedNodeId={externalSelectedNodeId}
               onSelectedNodeChange={setSelectedNode}
               onNodeSelectionCommit={onNodeSelectionCommit}
