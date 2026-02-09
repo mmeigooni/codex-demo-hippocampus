@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { motion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
 import { entryDelay } from "@/lib/feed/entry-delay";
 
@@ -14,9 +14,10 @@ interface ReasoningCardProps {
 
 export function ReasoningCard({ text, isActive, eventId, index }: ReasoningCardProps) {
   const textContainerRef = useRef<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    if (!textContainerRef.current) {
+    if (!isActive || !textContainerRef.current) {
       return;
     }
 
@@ -24,7 +25,15 @@ export function ReasoningCard({ text, isActive, eventId, index }: ReasoningCardP
       top: textContainerRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [text]);
+  }, [isActive, text]);
+
+  useEffect(() => {
+    if (isActive) {
+      setExpanded(false);
+    }
+  }, [isActive]);
+
+  const showCollapsedText = !isActive && text.length > 0 && !expanded;
 
   return (
     <motion.article
@@ -39,7 +48,9 @@ export function ReasoningCard({ text, isActive, eventId, index }: ReasoningCardP
       className="space-y-3 rounded-lg border border-indigo-500/30 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 p-3 [contain-intrinsic-size:220px] [content-visibility:auto]"
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-xs uppercase tracking-wide text-indigo-200">{isActive ? "Thinking..." : "Analysis"}</p>
+        <p className="font-mono text-xs uppercase tracking-wide text-indigo-200">
+          {isActive ? "Thinking..." : "Analysis complete"}
+        </p>
         {isActive ? (
           <motion.span
             animate={{ opacity: [0.4, 1, 0.4] }}
@@ -50,15 +61,33 @@ export function ReasoningCard({ text, isActive, eventId, index }: ReasoningCardP
         ) : null}
       </div>
 
-      {!isActive && text ? (
-        <p className="text-xs text-indigo-100/80">Analysis complete</p>
-      ) : (
-        <div ref={textContainerRef} className="max-h-36 overflow-auto rounded-md border border-indigo-500/20 bg-zinc-950/40 p-2">
-          <pre className="whitespace-pre-wrap break-words text-xs font-mono text-indigo-100/90">
-            {text || "Waiting for model reasoning..."}
-          </pre>
-        </div>
-      )}
+      <div
+        ref={textContainerRef}
+        className={`relative rounded-md border border-indigo-500/20 bg-zinc-950/40 p-2 ${showCollapsedText ? "max-h-20 overflow-hidden" : isActive ? "max-h-36 overflow-auto" : ""}`}
+      >
+        <pre className="whitespace-pre-wrap break-words text-xs font-mono text-indigo-100/90">
+          {text || "Waiting for model reasoning..."}
+        </pre>
+        {showCollapsedText ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-zinc-950/90 to-transparent" />
+        ) : null}
+      </div>
+
+      <AnimatePresence initial={false}>
+        {showCollapsedText ? (
+          <motion.button
+            type="button"
+            onClick={() => setExpanded(true)}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="mt-1 text-[10px] text-indigo-300/70 transition hover:text-indigo-200"
+          >
+            Show full analysis
+          </motion.button>
+        ) : null}
+      </AnimatePresence>
     </motion.article>
   );
 }
