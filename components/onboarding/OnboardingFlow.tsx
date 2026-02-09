@@ -920,7 +920,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         demoRepoFullName={demoRepoFullName}
         onSelectRepo={startImport}
         disabled={phase === "importing" || phase === "consolidating" || phase === "distributing"}
-        collapsed={phase !== "idle" && phase !== "error"}
+        collapsed={phase === "importing"}
         activeRepoName={activeRepo ?? undefined}
       />
 
