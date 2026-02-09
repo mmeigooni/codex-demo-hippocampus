@@ -1,11 +1,17 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { motion } from "motion/react";
 
 import { CodeSnippet } from "@/components/feed/CodeSnippet";
 import { ReasoningCard } from "@/components/feed/ReasoningCard";
 import { SalienceBadge } from "@/components/feed/SalienceBadge";
 import { TriggerPill } from "@/components/feed/TriggerPill";
+import {
+  getColorFamilyForEpisode,
+  getColorFamilyForRule,
+  type ColorFamily,
+} from "@/lib/color/cluster-palette";
 
 export interface ActivityEventView {
   id: string;
@@ -57,6 +63,12 @@ function resolveBorderClass(event: ActivityEventView) {
   return "border-zinc-800";
 }
 
+function resolveClusterColor(graphNodeId: string): ColorFamily {
+  return graphNodeId.startsWith("rule-")
+    ? getColorFamilyForRule(graphNodeId)
+    : getColorFamilyForEpisode(graphNodeId);
+}
+
 export function ActivityCard({ event, index, selected = false, pinnedFromGraph = false, onSelect }: ActivityCardProps) {
   if (event.variant === "reasoning") {
     return (
@@ -69,6 +81,10 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
   }
 
   const selectable = Boolean(onSelect && event.graphNodeId);
+  const clusterColor =
+    event.variant === "import" && typeof event.graphNodeId === "string" && event.graphNodeId.length > 0
+      ? resolveClusterColor(event.graphNodeId)
+      : null;
 
   const handleSelect = () => {
     if (!selectable || !onSelect) {
@@ -78,16 +94,31 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
     onSelect(event);
   };
 
+  const cardStyle: CSSProperties = {};
+  if (clusterColor) {
+    cardStyle.borderColor = clusterColor.borderMuted;
+  }
+
+  if (selected && clusterColor) {
+    cardStyle.borderColor = clusterColor.accent;
+    cardStyle.boxShadow = `0 0 0 1px ${clusterColor.accent}`;
+  }
+
+  if (pinnedFromGraph && clusterColor) {
+    cardStyle.borderLeftColor = clusterColor.accent;
+  }
+
   return (
     <motion.article
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.26, delay: index * 0.04 }}
       className={`space-y-3 rounded-lg border ${resolveBorderClass(event)} bg-zinc-900/70 p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
-        selectable ? "cursor-pointer transition hover:border-cyan-300/40" : ""
-      } ${selected ? "border-cyan-300/70 ring-1 ring-cyan-300/60" : ""} ${
-        pinnedFromGraph ? "border-l-4 border-l-cyan-300/90" : ""
+        selectable ? `cursor-pointer transition ${clusterColor ? "" : "hover:border-cyan-300/40"}` : ""
+      } ${selected && !clusterColor ? "border-cyan-300/70 ring-1 ring-cyan-300/60" : ""} ${
+        pinnedFromGraph ? `border-l-4 ${clusterColor ? "" : "border-l-cyan-300/90"}` : ""
       }`}
+      style={Object.keys(cardStyle).length > 0 ? cardStyle : undefined}
       onClick={handleSelect}
       onKeyDown={(eventKey) => {
         if (!selectable) {
@@ -104,12 +135,22 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
       aria-pressed={selectable ? selected : undefined}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-xs uppercase tracking-wide text-cyan-300">{event.type}</p>
+        <p
+          className={`font-mono text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
+          style={clusterColor ? { color: clusterColor.accent } : undefined}
+        >
+          {event.type}
+        </p>
         {event.salience !== undefined ? <SalienceBadge salience={event.salience} /> : null}
       </div>
 
       {pinnedFromGraph ? (
-        <p className="text-[10px] uppercase tracking-wider text-cyan-200/90">Selected from graph</p>
+        <p
+          className={`text-[10px] uppercase tracking-wider ${clusterColor ? "" : "text-cyan-200/90"}`}
+          style={clusterColor ? { color: clusterColor.textMuted } : undefined}
+        >
+          Selected from graph
+        </p>
       ) : null}
 
       <div>
@@ -120,7 +161,7 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
       {event.triggers && event.triggers.length > 0 ? (
         <div className="flex flex-wrap gap-1">
           {event.triggers.map((trigger) => (
-            <TriggerPill key={`${event.id}-${trigger}`} trigger={trigger} />
+            <TriggerPill key={`${event.id}-${trigger}`} trigger={trigger} accentColor={clusterColor?.accentMuted} />
           ))}
         </div>
       ) : null}
