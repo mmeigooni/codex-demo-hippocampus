@@ -20,8 +20,8 @@ export function RuleNode({ patternKey, position, selected, onHover, onClick }: R
   const spawnProgressRef = useRef(0);
   const baseScale = selected ? 1.25 : 1;
   const colorFamily = getColorFamilyForPatternKey(patternKey as PatternKey);
-  const latticeRadius = 0.42;
-  const coreRadius = latticeRadius * 0.5;
+  const coreRadius = 0.21;
+  const latticeRadius = 0.28;
 
   useFrame((_, delta) => {
     if (!groupRef.current) {
@@ -81,7 +81,7 @@ export function RuleNode({ patternKey, position, selected, onHover, onClick }: R
           depthWrite={false}
         />
       </mesh>
-      <mesh scale={1.12}>
+      <mesh scale={1.04}>
         <icosahedronGeometry args={[latticeRadius, 1]} />
         <meshBasicMaterial
           color={selected ? colorFamily.accent : colorFamily.border}
