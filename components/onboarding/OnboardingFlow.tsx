@@ -10,7 +10,7 @@ import type {
   PositionedBrainNode,
 } from "@/components/brain/types";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
-import { TwoColumnFeed } from "@/components/feed/TwoColumnFeed";
+import { NarrativeFeed } from "@/components/feed/NarrativeFeed";
 import { ConsolidationCTA } from "@/components/onboarding/ConsolidationCTA";
 import { DistributionCTA } from "@/components/onboarding/DistributionCTA";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
@@ -19,12 +19,8 @@ import { useConsolidationStream } from "@/hooks/useConsolidationStream";
 import { useDistributionStream } from "@/hooks/useDistributionStream";
 import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent } from "@/lib/codex/types";
-import {
-  applyRulePromotedEvent,
-  groupAssociatedByRule,
-  partitionFeedEvents,
-  type AssociationMap,
-} from "@/lib/feed/association-state";
+import { applyRulePromotedEvent, type AssociationMap } from "@/lib/feed/association-state";
+import { partitionIntoNarrative } from "@/lib/feed/narrative-partition";
 import { graphNodeIdFromConsolidationEvent } from "@/lib/feed/cross-selection";
 import { toImportActivityEvent } from "@/lib/feed/import-activity";
 import {
@@ -147,7 +143,7 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
     return {
       id: prefix,
       type: event.type,
-      title: `Consolidation started for ${String(data.repo_full_name ?? "repository")}`,
+      title: `Analyzing ${String(data.repo_full_name ?? "repository")}...`,
       subtitle: `${String(data.episode_count ?? 0)} episodes, ${String(data.existing_rule_count ?? 0)} existing rules`,
       variant: "consolidation",
       raw: data,
@@ -158,7 +154,7 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
     return {
       id: prefix,
       type: event.type,
-      title: `Pattern detected: ${String(data.name ?? "unknown")}`,
+      title: `Pattern found: ${String(data.name ?? "unknown")}`,
       subtitle: String(data.summary ?? "Pattern summary unavailable"),
       variant: "consolidation",
       raw: data,
@@ -169,7 +165,7 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
     return {
       id: prefix,
       type: event.type,
-      title: `Rule promoted: ${String(data.title ?? "Untitled rule")}`,
+      title: `Insight: ${String(data.title ?? "Untitled rule")}`,
       subtitle: String(data.description ?? "Rule promoted"),
       triggers: Array.isArray(data.triggers) ? (data.triggers as string[]) : [],
       graphNodeId: graphNodeIdFromConsolidationEvent(event) ?? undefined,
@@ -195,7 +191,7 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
     return {
       id: prefix,
       type: event.type,
-      title: "Contradiction detected",
+      title: "Tension found",
       subtitle: String(data.reason ?? "Incompatible episode pair found"),
       variant: "consolidation",
       raw: data,
@@ -208,7 +204,7 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
     return {
       id: prefix,
       type: event.type,
-      title: "Consolidation complete",
+      title: "Analysis complete",
       subtitle: `${String(counts.rules_promoted ?? 0)} rules promoted, ${String(counts.salience_updates ?? 0)} salience updates`,
       variant: "consolidation",
       raw: data,
@@ -391,15 +387,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     reasoningText,
   ]);
 
-  const { unassociated: unassociatedEvents, associated: associatedEvents } = useMemo(
-    () => partitionFeedEvents(activityEvents, associations),
-    [activityEvents, associations],
-  );
-
-  const associatedGroups = useMemo(
-    () => groupAssociatedByRule(associatedEvents, associations),
-    [associatedEvents, associations],
-  );
+  const narrativeSections = useMemo(() => partitionIntoNarrative(activityEvents, associations), [activityEvents, associations]);
 
   const statusText = useMemo(() => {
     const activeError = error ?? consolidationError ?? distributionResult?.error ?? null;
@@ -409,7 +397,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         return "Preparing import. Verifying repository access and scanning merged pull requests.";
       }
 
-      return "Import in progress. Neural feed is live.";
+      return "Reading code reviews...";
     }
 
     if (phase === "ready") {
@@ -419,30 +407,30 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       const skipped = Number(completeEvent?.data.skipped ?? 0);
 
       if (total === 0 && skipped > 0 && failed === 0) {
-        return `Import complete. ${skipped} episodes already imported.`;
+        return `Finished reading. ${skipped} observations already captured.`;
       }
 
       if (failed > 0 && skipped > 0) {
-        return `Import complete. ${total} episodes created (${skipped} already imported, ${failed} failed).`;
+        return `Finished reading. ${total} observations captured (${skipped} already imported, ${failed} failed).`;
       }
 
       if (failed > 0) {
-        return `Import complete. ${total} episodes created (${failed} failed).`;
+        return `Finished reading. ${total} observations captured (${failed} failed).`;
       }
 
       if (skipped > 0) {
-        return `Import complete. ${total} episodes created (${skipped} already imported).`;
+        return `Finished reading. ${total} observations captured (${skipped} already imported).`;
       }
 
-      return `Import complete. ${total} episodes created.`;
+      return `Finished reading. ${total} observations captured.`;
     }
 
     if (phase === "consolidating") {
-      return "Consolidating memories...";
+      return "Analyzing patterns across observations...";
     }
 
     if (phase === "consolidated") {
-      return "Consolidation complete. Ready to distribute.";
+      return "Analysis complete. Insights ready.";
     }
 
     if (phase === "distributing") {
@@ -1046,7 +1034,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
       <Card className="border-zinc-800 bg-zinc-900/40">
         <CardHeader>
-          <CardTitle className="text-zinc-100">Neural activity and memory graph</CardTitle>
+          <CardTitle className="text-zinc-100">Memory Timeline</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-zinc-300" aria-live="polite">
@@ -1090,9 +1078,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
           <div className="grid gap-4 xl:grid-cols-[1fr_1.6fr]">
             <div className="max-h-[540px] overflow-hidden px-1">
-              <TwoColumnFeed
-                unassociated={unassociatedEvents}
-                associated={associatedGroups}
+              <NarrativeFeed
+                sections={narrativeSections}
                 maxItems={14}
                 selectedNodeId={crossSelection.selectedNodeId}
                 selectionSource={crossSelection.selectedNodeId ? crossSelection.source : null}
