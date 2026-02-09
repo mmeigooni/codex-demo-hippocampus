@@ -107,12 +107,7 @@ export function PRGroupCard({
       } ${pinnedFromGraph ? `border-l-4 ${clusterColor ? "" : "border-l-cyan-300/90"}` : ""}`}
       style={Object.keys(cardStyle).length > 0 ? cardStyle : undefined}
     >
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-3 rounded-md px-1 py-0.5 text-left transition hover:bg-zinc-800/40"
-        onClick={() => setExpanded((current) => !current)}
-        aria-expanded={expanded}
-      >
+      <div className="flex items-center justify-between gap-3 rounded-md px-1 py-0.5">
         <div className="flex min-w-0 items-center gap-2">
           <p
             className={`shrink-0 font-mono text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
@@ -125,9 +120,20 @@ export function PRGroupCard({
         <div className="flex shrink-0 items-center gap-2">
           {clusterColor ? <span className="h-2 w-2 rounded-full" style={{ backgroundColor: clusterColor.accent }} /> : null}
           {meanSalience !== undefined ? <span className="text-xs text-zinc-500">{meanSalience}</span> : null}
-          <ChevronDown className={`h-4 w-4 text-zinc-300 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          <button
+            type="button"
+            className="rounded p-0.5 transition hover:bg-zinc-800/60"
+            onClick={(clickEvent) => {
+              clickEvent.stopPropagation();
+              setExpanded((current) => !current);
+            }}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse details" : "Expand details"}
+          >
+            <ChevronDown className={`h-4 w-4 text-zinc-300 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </button>
         </div>
-      </button>
+      </div>
 
       <AnimatePresence initial={false}>
         {expanded ? (
