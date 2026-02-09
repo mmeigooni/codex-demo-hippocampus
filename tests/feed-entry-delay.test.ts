@@ -10,20 +10,20 @@ describe("entryDelay", () => {
     expect(first).toBe(second);
   });
 
-  it("applies base stagger in 60ms steps for the same event", () => {
+  it("applies base stagger in 120ms steps for the same event", () => {
     const previous = entryDelay("episode-42", 1);
     const next = entryDelay("episode-42", 2);
 
-    expect(next - previous).toBeCloseTo(0.06, 6);
+    expect(next - previous).toBeCloseTo(0.12, 6);
   });
 
-  it("keeps jitter within the expected 0-80ms range", () => {
+  it("keeps jitter within the expected 0-150ms range", () => {
     const delay = entryDelay("episode-42", 4);
-    const base = 4 * 0.06;
+    const base = 4 * 0.12;
     const jitter = delay - base;
 
     expect(jitter).toBeGreaterThanOrEqual(0);
-    expect(jitter).toBeLessThanOrEqual(0.08);
+    expect(jitter).toBeLessThanOrEqual(0.15);
   });
 
   it("clamps invalid indices to zero base stagger", () => {
