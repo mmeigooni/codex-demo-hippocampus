@@ -208,6 +208,10 @@ describe("POST /api/github/import replay detection", () => {
     expect(types).toContain("replay_manifest");
     expect(types.filter((type) => type === "episode_created")).toHaveLength(2);
     expect(types).not.toContain("episode_skipped");
+    const replayManifestIndex = types.indexOf("replay_manifest");
+    const firstEpisodeIndex = types.indexOf("episode_created");
+    expect(replayManifestIndex).toBeGreaterThanOrEqual(0);
+    expect(firstEpisodeIndex).toBeGreaterThan(replayManifestIndex);
     expect(events.find((event) => event.type === "episode_created")?.data).toMatchObject({
       pr_number: 101,
       episode: {
