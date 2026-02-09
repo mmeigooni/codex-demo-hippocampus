@@ -35,6 +35,7 @@ interface ActivityCardProps {
   selected?: boolean;
   pinnedFromGraph?: boolean;
   onSelect?: (event: ActivityEventView) => void;
+  tier?: "default" | "milestone";
 }
 
 function resolveBorderClass(event: ActivityEventView) {
@@ -61,8 +62,28 @@ function resolveBorderClass(event: ActivityEventView) {
   return "border-zinc-700/80";
 }
 
-export function ActivityCard({ event, index, selected = false, pinnedFromGraph = false, onSelect }: ActivityCardProps) {
+function resolveMilestoneAccentClass(event: ActivityEventView) {
+  if (event.type === "pattern_detected") {
+    return "border-zinc-700/80 border-l-[3px] border-l-indigo-400/70";
+  }
+
+  if (event.type === "contradiction_found") {
+    return "border-zinc-700/80 border-l-[3px] border-l-amber-400/70";
+  }
+
+  return "border-zinc-700/80 border-l-[3px] border-l-zinc-500/60";
+}
+
+export function ActivityCard({
+  event,
+  index,
+  selected = false,
+  pinnedFromGraph = false,
+  onSelect,
+  tier = "default",
+}: ActivityCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const isMilestone = tier === "milestone";
 
   useEffect(() => {
     if (pinnedFromGraph) {
@@ -111,15 +132,17 @@ export function ActivityCard({ event, index, selected = false, pinnedFromGraph =
 
   return (
     <motion.article
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={isMilestone ? { opacity: 0, y: 10, scale: 0.98 } : { opacity: 0, y: 14 }}
+      animate={isMilestone ? { opacity: 1, y: 0, scale: 1 } : { opacity: 1, y: 0 }}
       transition={{
         type: "spring",
         damping: 24,
         stiffness: 180,
         delay: entryDelay(event.id, index),
       }}
-      className={`space-y-3 rounded-lg border ${resolveBorderClass(event)} bg-zinc-900/70 p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
+      className={`space-y-3 rounded-lg border ${isMilestone ? resolveMilestoneAccentClass(event) : resolveBorderClass(event)} ${
+        isMilestone ? "bg-zinc-900/80" : "bg-zinc-900/70"
+      } p-3 [contain-intrinsic-size:220px] [content-visibility:auto] ${
         selectable
           ? `cursor-pointer transition-colors ${clusterColor ? "hover:bg-zinc-900/85" : "hover:border-cyan-300/55 hover:bg-zinc-900/85"}`
           : ""
