@@ -13,7 +13,7 @@ describe("toImportActivityEvent", () => {
           id: "ep-44",
           title: "Episode 44",
           salience_score: 8,
-          the_pattern: "latency",
+          the_pattern: "sensitive-logging",
           triggers: ["timeout"],
           why_it_matters: "Prevents user-visible failures",
         },
@@ -24,6 +24,7 @@ describe("toImportActivityEvent", () => {
 
     expect(activity?.type).toBe("episode_created");
     expect(activity?.whyItMatters).toBe("Prevents user-visible failures");
+    expect(activity?.subtitle).toBe("Sensitive logging");
     expect(activity?.graphNodeId).toBe("episode-ep-44");
     expect(activity?.raw).toMatchObject({ pr_number: 44 });
   });
@@ -46,6 +47,25 @@ describe("toImportActivityEvent", () => {
     const activity = toImportActivityEvent(event, 1);
 
     expect(activity?.whyItMatters).toBeUndefined();
+  });
+
+  it("falls back to a normalized subtitle when pattern key is unknown", () => {
+    const event: ImportEvent = {
+      type: "episode_created",
+      data: {
+        pr_number: 23,
+        episode: {
+          id: "ep-23",
+          title: "Episode 23",
+          salience_score: 3,
+          the_pattern: "custom-risk-pattern",
+          triggers: [],
+        },
+      },
+    };
+
+    const activity = toImportActivityEvent(event, 3);
+    expect(activity?.subtitle).toBe("Custom Risk Pattern");
   });
 
   it("drops replay manifests from activity feed", () => {
