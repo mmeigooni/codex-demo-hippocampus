@@ -10,6 +10,7 @@ import { SalienceBadge } from "@/components/feed/SalienceBadge";
 import { TriggerPill } from "@/components/feed/TriggerPill";
 import { resolveClusterColor } from "@/lib/feed/card-color";
 import { entryDelay } from "@/lib/feed/entry-delay";
+import { EVENT_TYPE_LABELS } from "@/lib/feed/narrative-partition";
 
 interface PRGroupCardProps {
   prNumber: number;
@@ -117,7 +118,7 @@ export function PRGroupCard({
             className={`shrink-0 font-mono text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
             style={clusterColor ? { color: clusterColor.accent } : undefined}
           >
-            PR #{prNumber}
+            Code Review #{prNumber}
           </p>
           <p className="truncate text-sm font-medium text-zinc-100">{prTitle}</p>
         </div>
@@ -138,7 +139,7 @@ export function PRGroupCard({
             className="space-y-2 overflow-hidden"
           >
             <p className="text-xs text-zinc-400">
-              {episodes.length} episode{episodes.length === 1 ? "" : "s"}
+              {episodes.length} observation{episodes.length === 1 ? "" : "s"}
             </p>
             {meanSalience !== undefined ? <SalienceBadge salience={meanSalience} /> : null}
             {pinnedFromGraph ? (
@@ -183,7 +184,7 @@ export function PRGroupCard({
                       className={`text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
                       style={clusterColor ? { color: clusterColor.accent } : undefined}
                     >
-                      {episode.type}
+                      {EVENT_TYPE_LABELS[episode.type] ?? episode.type}
                     </p>
                     {episode.salience !== undefined ? <SalienceBadge salience={episode.salience} /> : null}
                   </div>

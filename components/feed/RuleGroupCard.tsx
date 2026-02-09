@@ -57,7 +57,7 @@ export function RuleGroupCard({
   rulePatternKey,
   onSelect,
 }: RuleGroupCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   useEffect(() => {
     if (pinnedFromGraph) {
@@ -139,7 +139,7 @@ export function RuleGroupCard({
         <div className="flex min-w-0 items-center gap-2">
           <Sparkles className="h-4 w-4 shrink-0" style={{ color: colorFamily.accent }} />
           <p className="shrink-0 font-mono text-xs uppercase tracking-wide" style={{ color: colorFamily.accent }}>
-            Rule Promoted
+            Insight
           </p>
           <p className="truncate text-sm font-medium" style={{ color: colorFamily.text }}>
             {ruleTitle}
@@ -174,14 +174,14 @@ export function RuleGroupCard({
                 className="rounded-full border px-2 py-1 text-xs"
                 style={{ borderColor: colorFamily.borderMuted, color: colorFamily.textMuted }}
               >
-                {episodeCount} episode{episodeCount === 1 ? "" : "s"}
+                Based on {episodeCount} observation{episodeCount === 1 ? "" : "s"}
               </span>
             ) : null}
 
             {confidencePercent !== null ? (
               <div className="space-y-1">
                 <div className="flex items-center justify-between gap-2 text-xs">
-                  <span style={{ color: colorFamily.textMuted }}>Confidence</span>
+                  <span style={{ color: colorFamily.textMuted }}>Pattern strength</span>
                   <span style={{ color: colorFamily.text }}>{confidencePercent}%</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80">
