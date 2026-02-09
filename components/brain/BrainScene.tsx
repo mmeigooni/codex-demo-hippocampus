@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState, type ComponentType, type ComponentProps, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ComponentProps, type RefObject } from "react";
 
 import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Bloom, EffectComposer } from "@react-three/postprocessing";
+import { EffectComposer } from "@react-three/postprocessing";
+import { BlendFunction, BloomEffect } from "postprocessing";
 import { MathUtils } from "three";
 
 import { BrainGraph } from "@/components/brain/BrainGraph";
@@ -33,22 +34,44 @@ const BrainGraphWithVisuals = BrainGraph as unknown as ComponentType<BrainGraphP
 
 interface AtmosphereControllerProps {
   isConsolidating: boolean;
-  bloomRef: RefObject<{ intensity: number } | null>;
   ambientRef: RefObject<{ intensity: number } | null>;
 }
 
-function AtmosphereController({ isConsolidating, bloomRef, ambientRef }: AtmosphereControllerProps) {
+interface AnimatedBloomEffectProps {
+  targetIntensity: number;
+}
+
+function AnimatedBloomEffect({ targetIntensity }: AnimatedBloomEffectProps) {
+  const bloomEffect = useMemo(
+    () =>
+      new BloomEffect({
+        blendFunction: BlendFunction.ADD,
+        mipmapBlur: true,
+        luminanceThreshold: 0.25,
+        intensity: 1.0,
+        radius: 0.65,
+      }),
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      bloomEffect.dispose();
+    },
+    [bloomEffect],
+  );
+
   useFrame((_, delta) => {
     const alpha = Math.min(1, delta * 2);
+    bloomEffect.setIntensity(MathUtils.lerp(bloomEffect.intensity, targetIntensity, alpha));
+  });
 
-    if (bloomRef.current) {
-      const targetBloomIntensity = isConsolidating ? 1.4 : 1.0;
-      bloomRef.current.intensity = MathUtils.lerp(
-        bloomRef.current.intensity,
-        targetBloomIntensity,
-        alpha,
-      );
-    }
+  return <primitive object={bloomEffect} />;
+}
+
+function AtmosphereController({ isConsolidating, ambientRef }: AtmosphereControllerProps) {
+  useFrame((_, delta) => {
+    const alpha = Math.min(1, delta * 2);
 
     if (ambientRef.current) {
       const targetAmbientIntensity = isConsolidating ? 0.28 : 0.45;
@@ -75,7 +98,6 @@ export function BrainScene({
   onNodeSelectionCommit,
 }: BrainSceneProps) {
   const [selectedNode, setSelectedNode] = useState<PositionedBrainNode | null>(null);
-  const bloomRef = useRef<{ intensity: number } | null>(null);
   const ambientRef = useRef<{ intensity: number } | null>(null);
 
   const hasGraphData = useMemo(() => nodes.length > 0, [nodes.length]);
@@ -91,7 +113,6 @@ export function BrainScene({
             <pointLight position={[-8, -5, -5]} intensity={0.45} color="#fde68a" />
             <AtmosphereController
               isConsolidating={consolidationVisuals?.isConsolidating ?? false}
-              bloomRef={bloomRef}
               ambientRef={ambientRef}
             />
 
@@ -121,7 +142,7 @@ export function BrainScene({
               autoRotateSpeed={consolidationVisuals?.isConsolidating ? 0.15 : 0.35}
             />
             <EffectComposer>
-              <Bloom ref={bloomRef} mipmapBlur luminanceThreshold={0.25} intensity={1.0} radius={0.65} />
+              <AnimatedBloomEffect targetIntensity={consolidationVisuals?.isConsolidating ? 1.4 : 1.0} />
             </EffectComposer>
           </Canvas>
         ) : (

@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 
+import { BrainSceneClient } from "@/components/brain/BrainSceneClient";
 import type {
   BrainEdgeModel,
   BrainNodeModel,
@@ -69,18 +69,6 @@ const EMPTY_GRAPH: GraphPayload = {
     ruleCount: 0,
   },
 };
-
-const BrainScene = dynamic(
-  () => import("@/components/brain/BrainScene").then((module) => module.BrainScene),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
-        Loading memory graph...
-      </div>
-    ),
-  },
-);
 
 const PHASE_ORDER: Record<OnboardingPhase, number> = {
   idle: 0,
@@ -1047,7 +1035,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
                 onSelectEvent={handleFeedSelection}
               />
             </div>
-            <BrainScene
+            <BrainSceneClient
               nodes={displayNodes}
               edges={displayEdges}
               layoutNodes={graph.nodes}
