@@ -271,6 +271,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const [consolidationRepoId, setConsolidationRepoId] = useState<string | null>(null);
   const [distributionRepoId, setDistributionRepoId] = useState<string | null>(null);
   const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string> | null>(null);
+  const [visibleConsolidationNodeIds, setVisibleConsolidationNodeIds] = useState<Set<string> | null>(null);
   const [crossSelection, setCrossSelection] = useState<CrossSelectionState>({
     selectedNodeId: null,
     source: "feed",
@@ -618,6 +619,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setError(null);
     setStorageMode(null);
     setVisibleNodeIds(new Set());
+    setVisibleConsolidationNodeIds(null);
     setCrossSelection({ selectedNodeId: null, source: "feed" });
     setPhase("importing");
 
@@ -744,6 +746,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     setError(null);
     setConsolidationRepoId(activeRepoId);
     setDistributionRepoId(null);
+    setVisibleConsolidationNodeIds(new Set());
     setPhase("consolidating");
     await runConsolidation(activeRepoId);
   };
@@ -822,15 +825,45 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
     let shouldDebounceRefresh = false;
     let shouldRefreshImmediately = false;
+    const revealedRuleNodeIds: string[] = [];
+    let shouldRevealAllRules = false;
 
     for (const event of pendingEvents) {
       if (event.type === "rule_promoted" || event.type === "salience_updated") {
         shouldDebounceRefresh = true;
       }
 
+      if (event.type === "rule_promoted") {
+        const eventData = event.data as Record<string, unknown>;
+        const ruleId = eventData.rule_id;
+        if (typeof ruleId === "string" && ruleId.length > 0) {
+          revealedRuleNodeIds.push(`rule-${ruleId}`);
+        }
+      }
+
       if (event.type === "consolidation_complete") {
         shouldRefreshImmediately = true;
+        shouldRevealAllRules = true;
       }
+    }
+
+    if (revealedRuleNodeIds.length > 0) {
+      setVisibleConsolidationNodeIds((current) => {
+        if (current === null) {
+          return current;
+        }
+
+        const next = new Set(current);
+        for (const nodeId of revealedRuleNodeIds) {
+          next.add(nodeId);
+        }
+
+        return next;
+      });
+    }
+
+    if (shouldRevealAllRules) {
+      setVisibleConsolidationNodeIds(null);
     }
 
     if (shouldDebounceRefresh) {
@@ -875,10 +908,14 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
     if (PHASE_ORDER[phase] < PHASE_ORDER.consolidating) {
       nodes = nodes.filter((node) => node.type !== "rule");
+    } else if (visibleConsolidationNodeIds) {
+      nodes = nodes.filter(
+        (node) => node.type !== "rule" || visibleConsolidationNodeIds.has(node.id),
+      );
     }
 
     return nodes;
-  }, [graph.nodes, phase, visibleNodeIds]);
+  }, [graph.nodes, phase, visibleConsolidationNodeIds, visibleNodeIds]);
 
   const displayEdges = useMemo(() => {
     let edges = visibleNodeIds
@@ -888,10 +925,17 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     if (PHASE_ORDER[phase] < PHASE_ORDER.consolidating) {
       const ruleNodeIds = new Set(graph.nodes.filter((node) => node.type === "rule").map((node) => node.id));
       edges = edges.filter((edge) => !ruleNodeIds.has(edge.source) && !ruleNodeIds.has(edge.target));
+    } else if (visibleConsolidationNodeIds) {
+      const hiddenRuleNodeIds = new Set(
+        graph.nodes
+          .filter((node) => node.type === "rule" && !visibleConsolidationNodeIds.has(node.id))
+          .map((node) => node.id),
+      );
+      edges = edges.filter((edge) => !hiddenRuleNodeIds.has(edge.source) && !hiddenRuleNodeIds.has(edge.target));
     }
 
     return edges;
-  }, [graph.edges, graph.nodes, phase, visibleNodeIds]);
+  }, [graph.edges, graph.nodes, phase, visibleConsolidationNodeIds, visibleNodeIds]);
 
   const noConsolidatedRules = activeSelection && !graphLoading && graph.stats.ruleCount === 0;
 
