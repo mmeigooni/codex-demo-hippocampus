@@ -35,6 +35,17 @@ describe("import stream mode helpers", () => {
     expect(hasLiveSignal(events)).toBe(true);
   });
 
+  it("keeps live once live mode is established even if replay manifest appears later", () => {
+    const liveEvents: ImportEvent[] = [{ type: "encoding_start", data: { pr_number: 12 } }];
+    const manifestEvents: ImportEvent[] = [{ type: "replay_manifest", data: { mode: "import_replay" } }];
+
+    const firstMode = resolveImportStreamMode("unknown", liveEvents);
+    const secondMode = resolveImportStreamMode(firstMode, manifestEvents);
+
+    expect(firstMode).toBe("live");
+    expect(secondMode).toBe("live");
+  });
+
   it("keeps replay once replay mode is established", () => {
     const laterEvents: ImportEvent[] = [{ type: "encoding_start", data: { pr_number: 44 } }];
 
