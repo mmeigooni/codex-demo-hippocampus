@@ -188,3 +188,31 @@ export function buildRuleTitleForKey(key: PatternKey) {
 export function buildRuleDescriptionForKey(key: PatternKey) {
   return RULE_DESCRIPTIONS[key];
 }
+
+export type SuperCategory = "safety" | "resilience" | "security" | "flow";
+
+export const SUPER_CATEGORY_KEYS = ["safety", "resilience", "security", "flow"] as const;
+
+export const SUPER_CATEGORY_LABELS: Record<SuperCategory, string> = {
+  safety: "Safety",
+  resilience: "Resilience",
+  security: "Security",
+  flow: "Flow",
+};
+
+export const PATTERN_SUPER_CATEGORY: Record<PatternKey, SuperCategory> = {
+  "error-contract": "safety",
+  "input-validation": "safety",
+  "retry-strategy": "resilience",
+  "dependency-resilience": "resilience",
+  idempotency: "resilience",
+  "sensitive-logging": "security",
+  "auth-token-handling": "security",
+  "concurrency-serialization": "flow",
+  "state-transition": "flow",
+  "review-hygiene": "flow",
+};
+
+export function getSuperCategoryForPattern(key: PatternKey): SuperCategory {
+  return PATTERN_SUPER_CATEGORY[key];
+}
