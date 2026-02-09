@@ -8,14 +8,8 @@ import { ChevronDown } from "lucide-react";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
 import { SalienceBadge } from "@/components/feed/SalienceBadge";
 import { TriggerPill } from "@/components/feed/TriggerPill";
-import {
-  getColorFamilyForPatternKey,
-  getColorFamilyForEpisode,
-  getColorFamilyForRule,
-  type ColorFamily,
-} from "@/lib/color/cluster-palette";
+import { resolveClusterColor } from "@/lib/feed/card-color";
 import { entryDelay } from "@/lib/feed/entry-delay";
-import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 interface PRGroupCardProps {
   prNumber: number;
@@ -39,44 +33,6 @@ function averageSalience(episodes: ActivityEventView[]) {
 
   const total = values.reduce((sum, value) => sum + value, 0);
   return Math.round((total / values.length) * 10) / 10;
-}
-
-function normalizePatternKey(value: unknown): PatternKey | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  if (!PATTERN_KEYS.includes(value as PatternKey)) {
-    return null;
-  }
-
-  return value as PatternKey;
-}
-
-function resolvePatternKeyFromRaw(raw: Record<string, unknown>): PatternKey | null {
-  const episode = raw.episode;
-  if (episode && typeof episode === "object") {
-    const nestedPatternKey = normalizePatternKey((episode as Record<string, unknown>).pattern_key);
-    if (nestedPatternKey) {
-      return nestedPatternKey;
-    }
-  }
-
-  const topLevelPatternKey = normalizePatternKey(raw.pattern_key);
-  if (topLevelPatternKey) {
-    return topLevelPatternKey;
-  }
-
-  return normalizePatternKey(raw.rule_key);
-}
-
-function resolveClusterColor(graphNodeId: string, raw: Record<string, unknown>): ColorFamily {
-  const patternKey = resolvePatternKeyFromRaw(raw);
-  if (patternKey) {
-    return getColorFamilyForPatternKey(patternKey);
-  }
-
-  return graphNodeId.startsWith("rule-") ? getColorFamilyForRule(graphNodeId) : getColorFamilyForEpisode(graphNodeId);
 }
 
 export function PRGroupCard({
@@ -156,30 +112,21 @@ export function PRGroupCard({
         onClick={() => setExpanded((current) => !current)}
         aria-expanded={expanded}
       >
-        <div className="space-y-1">
+        <div className="flex min-w-0 items-center gap-2">
           <p
-            className={`font-mono text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
+            className={`shrink-0 font-mono text-xs uppercase tracking-wide ${clusterColor ? "" : "text-cyan-300"}`}
             style={clusterColor ? { color: clusterColor.accent } : undefined}
           >
             PR #{prNumber}
           </p>
-          <p className="text-sm font-medium text-zinc-100">{prTitle}</p>
-          <p className="text-xs text-zinc-400">{episodes.length} episode{episodes.length === 1 ? "" : "s"}</p>
+          <p className="truncate text-sm font-medium text-zinc-100">{prTitle}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {meanSalience !== undefined ? <SalienceBadge salience={meanSalience} /> : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {clusterColor ? <span className="h-2 w-2 rounded-full" style={{ backgroundColor: clusterColor.accent }} /> : null}
+          {meanSalience !== undefined ? <span className="text-xs text-zinc-500">{meanSalience}</span> : null}
           <ChevronDown className={`h-4 w-4 text-zinc-300 transition-transform ${expanded ? "rotate-180" : ""}`} />
         </div>
       </button>
-
-      {pinnedFromGraph ? (
-        <p
-          className={`text-[10px] uppercase tracking-wider ${clusterColor ? "" : "text-cyan-200/90"}`}
-          style={clusterColor ? { color: clusterColor.textMuted } : undefined}
-        >
-          Selected from graph
-        </p>
-      ) : null}
 
       <AnimatePresence initial={false}>
         {expanded ? (
@@ -190,6 +137,18 @@ export function PRGroupCard({
             transition={{ duration: 0.2 }}
             className="space-y-2 overflow-hidden"
           >
+            <p className="text-xs text-zinc-400">
+              {episodes.length} episode{episodes.length === 1 ? "" : "s"}
+            </p>
+            {meanSalience !== undefined ? <SalienceBadge salience={meanSalience} /> : null}
+            {pinnedFromGraph ? (
+              <p
+                className={`text-[10px] uppercase tracking-wider ${clusterColor ? "" : "text-cyan-200/90"}`}
+                style={clusterColor ? { color: clusterColor.textMuted } : undefined}
+              >
+                Selected from graph
+              </p>
+            ) : null}
             {episodes.map((episode) => {
               const selectable = Boolean(onSelectEpisode && episode.graphNodeId);
               const episodeSelected = selectedEpisodeId === episode.id;
