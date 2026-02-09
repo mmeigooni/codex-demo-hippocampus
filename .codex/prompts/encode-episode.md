@@ -17,10 +17,18 @@ Infer these semantic fields:
 - `salience_score` (0-10)
 - `triggers` (short keywords)
 
+## Salience rubric
+- `0-2`: Cosmetic, style-only, or non-operational changes.
+- `3-4`: Local contract/readability improvements with limited blast radius.
+- `5-6`: Moderate reliability or performance impact in normal operation.
+- `7-8`: Correctness or security boundary impact with meaningful operational risk.
+- `9-10`: Immediate security, PII, credential, data-loss, or compliance risk.
+
 ## Output requirements
 - Return strict JSON only.
 - Do not invent deterministic fields provided by caller.
 - Keep `triggers` concise and reusable.
+- Use the full salience range and avoid `9-10` unless the incident is clearly critical.
 
 ## Output schema
 ```json

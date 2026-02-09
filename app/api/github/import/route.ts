@@ -1,14 +1,23 @@
 import { fetchRepo, fetchMergedPRs, fetchPRDiff, fetchPRReviews } from "@/lib/github/client";
 import { encodeEpisode } from "@/lib/codex/encoder";
 import { executeSearch, generateSearchRules, summarizeTokenReduction } from "@/lib/codex/search";
-import { insertEpisodeForRepo, listEpisodesForRepo, upsertRepoForUser } from "@/lib/fallback/runtime-memory-store";
+import {
+  applySalienceUpdates,
+  insertEpisodeForRepo,
+  listEpisodesForRepo,
+  upsertRepoForUser,
+} from "@/lib/fallback/runtime-memory-store";
 import { collectExistingPrNumbers, isUniqueViolationError } from "@/lib/github/import-idempotency";
-import type { ImportEpisodeSummary, ImportEvent, ImportRepoRequest } from "@/lib/github/types";
+import type { ImportCompleteData, ImportEpisodeSummary, ImportEvent, ImportRepoRequest } from "@/lib/github/types";
 import {
   isPrivateRepo,
   MISSING_PROVIDER_TOKEN_MESSAGE,
   PRIVATE_REPOS_NOT_SUPPORTED_MESSAGE,
 } from "@/lib/github/public-only-policy";
+import {
+  DEMO_SALIENCE_TARGETS_BY_PR,
+  isConfiguredDemoRepo,
+} from "@/lib/codex/salience-policy";
 import {
   isProfilesSchemaNotReadyError,
   resolveStorageModeAfterProfilesPreflight,
@@ -17,7 +26,7 @@ import {
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
 
-function buildSseMessage(event: ImportEvent) {
+function buildSseMessage(event: ImportEvent<unknown>) {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
 
@@ -197,6 +206,110 @@ function isReplayReadyEpisodeSummary(value: ImportEpisodeSummary | null): value 
   );
 }
 
+interface EpisodeSalienceBackfill {
+  episode_id: string;
+  source_pr_number: number;
+  salience_score: number;
+}
+
+function collectDemoSalienceBackfillUpdates(episodesByPrNumber: Map<number, ImportEpisodeSummary>) {
+  const updates: EpisodeSalienceBackfill[] = [];
+
+  for (const [prNumber, episode] of episodesByPrNumber.entries()) {
+    const targetScore = DEMO_SALIENCE_TARGETS_BY_PR[prNumber];
+    if (typeof targetScore !== "number") {
+      continue;
+    }
+
+    if (Math.round(episode.salience_score) === targetScore) {
+      continue;
+    }
+
+    updates.push({
+      episode_id: episode.id,
+      source_pr_number: prNumber,
+      salience_score: targetScore,
+    });
+  }
+
+  return updates;
+}
+
+async function applySupabaseDemoSalienceBackfill(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  repoId: string,
+  requestedPrNumbers: number[],
+) {
+  const cachedEpisodeMap = await listSupabaseEpisodeSummariesForPrNumbers(supabase, repoId, requestedPrNumbers);
+  const updates = collectDemoSalienceBackfillUpdates(cachedEpisodeMap);
+
+  for (const update of updates) {
+    const { error } = await supabase
+      .from("episodes")
+      .update({ salience_score: update.salience_score })
+      .eq("id", update.episode_id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  return updates.length;
+}
+
+function applyRuntimeDemoSalienceBackfill(repoId: string) {
+  const cachedEpisodeMap = listRuntimeEpisodeSummariesByPrNumber(repoId);
+  const updates = collectDemoSalienceBackfillUpdates(cachedEpisodeMap);
+
+  if (updates.length > 0) {
+    applySalienceUpdates(
+      repoId,
+      updates.map((update) => ({
+        episode_id: update.episode_id,
+        salience_score: update.salience_score,
+      })),
+    );
+  }
+
+  return updates.length;
+}
+
+function buildImportCompleteData({
+  total,
+  failed,
+  skipped,
+  repoId,
+  replayed,
+  salienceBackfilled,
+}: {
+  total: number;
+  failed: number;
+  skipped: number;
+  repoId?: string;
+  replayed?: boolean;
+  salienceBackfilled: number;
+}): ImportCompleteData {
+  const payload: ImportCompleteData = {
+    total,
+    failed,
+    skipped,
+  };
+
+  if (repoId) {
+    payload.repo_id = repoId;
+  }
+
+  if (replayed) {
+    payload.replayed = true;
+  }
+
+  if (salienceBackfilled > 0) {
+    payload.salience_backfilled = salienceBackfilled;
+  }
+
+  return payload;
+}
+
 function skippedEvent(pr: { number: number; title: string }): ImportEvent {
   return {
     type: "episode_skipped",
@@ -292,7 +405,7 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (event: ImportEvent) => {
+      const emit = (event: ImportEvent<unknown>) => {
         controller.enqueue(encoder.encode(buildSseMessage(event)));
       };
 
@@ -313,6 +426,7 @@ export async function POST(request: Request) {
         let created = 0;
         let failed = 0;
         let skipped = 0;
+        let salienceBackfilled = 0;
         const runtimeEpisodes = storageMode === "memory-fallback" ? listEpisodesForRepo(repoRecordId) : [];
         const existingPrNumbers =
           storageMode === "supabase"
@@ -322,11 +436,20 @@ export async function POST(request: Request) {
                   source_pr_number: episode.source_pr_number,
                 })),
               );
+        const requestedPrNumbers = pullRequests.map((pullRequest) => pullRequest.number);
+        const repoFullName = `${owner}/${repo}`;
+
+        if (requestedPrNumbers.length > 0 && isConfiguredDemoRepo(repoFullName)) {
+          salienceBackfilled =
+            storageMode === "supabase"
+              ? await applySupabaseDemoSalienceBackfill(supabase, repoRecordId, requestedPrNumbers)
+              : applyRuntimeDemoSalienceBackfill(repoRecordId);
+        }
+
         const allCached =
           pullRequests.length > 0 && pullRequests.every((pullRequest) => existingPrNumbers.has(pullRequest.number));
 
         if (allCached) {
-          const requestedPrNumbers = pullRequests.map((pullRequest) => pullRequest.number);
           const cachedEpisodeMap =
             storageMode === "supabase"
               ? await listSupabaseEpisodeSummariesForPrNumbers(supabase, repoRecordId, requestedPrNumbers)
@@ -367,13 +490,14 @@ export async function POST(request: Request) {
 
             emit({
               type: "complete",
-              data: {
+              data: buildImportCompleteData({
                 total: orderedCachedEpisodes.length,
                 failed: 0,
                 skipped: 0,
-                repo_id: repoRecordId,
+                repoId: repoRecordId,
                 replayed: true,
-              },
+                salienceBackfilled,
+              }),
             });
             return;
           }
@@ -501,7 +625,16 @@ export async function POST(request: Request) {
           }
         }
 
-        emit({ type: "complete", data: { total: created, failed, skipped, repo_id: repoRecordId } });
+        emit({
+          type: "complete",
+          data: buildImportCompleteData({
+            total: created,
+            failed,
+            skipped,
+            repoId: repoRecordId,
+            salienceBackfilled,
+          }),
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unexpected import error";
         emit({

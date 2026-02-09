@@ -80,6 +80,7 @@ export interface ImportCompleteData {
   skipped: number;
   repo_id?: string;
   replayed?: boolean;
+  salience_backfilled?: number;
 }
 
 export interface ImportEvent<T = Record<string, unknown>> {
