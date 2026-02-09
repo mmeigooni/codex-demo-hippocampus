@@ -17,11 +17,11 @@ export function Header({ githubUsername, avatarUrl }: HeaderProps) {
           alt="Hippocampus"
           width={32}
           height={32}
-          className="h-8 w-8 rounded-full"
+          className="h-8 w-8 rounded-full [filter:brightness(1.25)] drop-shadow-[0_0_4px_rgba(255,255,255,0.4)]"
         />
         <div className="space-y-1">
-          <p className="text-sm text-zinc-400">Team Memory</p>
           <h1 className="text-xl font-semibold text-zinc-100">Hippocampus</h1>
+          <p className="text-sm text-zinc-400">Team Memory</p>
         </div>
       </div>
 
