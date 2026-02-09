@@ -11,8 +11,8 @@ import {
 } from "@/lib/color/cluster-palette";
 
 describe("cluster palette", () => {
-  it("exports exactly ten color families", () => {
-    expect(CLUSTER_PALETTE).toHaveLength(10);
+  it("exports exactly four color families", () => {
+    expect(CLUSTER_PALETTE).toHaveLength(4);
   });
 
   it("is deterministic for rule and episode IDs", () => {
@@ -21,23 +21,26 @@ describe("cluster palette", () => {
   });
 
   it("normalizes boundary indexes", () => {
-    expect(getColorFamilyByIndex(-1)).toBe(CLUSTER_PALETTE[9]);
-    expect(getColorFamilyByIndex(10)).toBe(CLUSTER_PALETTE[0]);
+    expect(getColorFamilyByIndex(-1)).toBe(CLUSTER_PALETTE[3]);
+    expect(getColorFamilyByIndex(4)).toBe(CLUSTER_PALETTE[0]);
     expect(getColorFamilyByIndex(42)).toBe(CLUSTER_PALETTE[2]);
   });
 
-  it("maps pattern keys to deterministic unique color families", () => {
+  it("maps pattern keys through their super-category color families", () => {
+    expect(getColorFamilyForPatternKey("error-contract")).toBe(CLUSTER_PALETTE[0]);
+    expect(getColorFamilyForPatternKey("retry-strategy")).toBe(CLUSTER_PALETTE[1]);
     expect(getColorFamilyForPatternKey("sensitive-logging")).toBe(CLUSTER_PALETTE[2]);
+    expect(getColorFamilyForPatternKey("concurrency-serialization")).toBe(CLUSTER_PALETTE[3]);
 
     const seen = new Set<ColorFamily>();
     for (const key of PATTERN_KEYS) {
       seen.add(getColorFamilyForPatternKey(key));
     }
 
-    expect(seen.size).toBe(PATTERN_KEYS.length);
+    expect(seen.size).toBe(4);
   });
 
-  it("can reach all ten families through hash mapping", () => {
+  it("can reach all four families through hash mapping", () => {
     const seen = new Set<number>();
 
     for (let index = 0; index < 20_000; index += 1) {
