@@ -57,7 +57,7 @@ describe("groupImportActivityEvents", () => {
 
     const output = groupImportActivityEvents(input);
 
-    expect(output.map((entry) => entry.type)).toEqual(["pr_found", "pr_group", "pr_group", "complete"]);
+    expect(output.map((entry) => entry.type)).toEqual(["pr_found", "pr_group", "episode_created", "complete"]);
 
     const firstGroup = output[1]!;
     expect(firstGroup.title).toBe("PR #11: Fix retry race");
@@ -94,7 +94,7 @@ describe("groupImportActivityEvents", () => {
     const output = groupImportActivityEvents(input);
 
     expect(output).toHaveLength(1);
-    expect(output[0]?.type).toBe("pr_group");
-    expect(output[0]?.raw).toMatchObject({ pr_number: 33 });
+    expect(output[0]?.type).toBe("episode_created");
+    expect(output[0]?.raw).toMatchObject({ episode: { source_pr_number: 33 } });
   });
 });
