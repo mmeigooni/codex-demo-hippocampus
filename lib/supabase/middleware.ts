@@ -14,7 +14,7 @@ function getSupabasePublicConfig() {
   return { url, key };
 }
 
-const PROTECTED_PATH_PREFIXES = ["/dashboard", "/sleep-cycle"];
+const PROTECTED_PATH_PREFIXES = ["/dashboard"];
 
 function isProtectedPath(pathname: string) {
   return PROTECTED_PATH_PREFIXES.some(
