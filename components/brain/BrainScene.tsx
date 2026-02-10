@@ -229,6 +229,7 @@ export function BrainScene({
               enablePan={false}
               enableRotate
               enableZoom
+              zoomSpeed={0.6}
               minDistance={5}
               maxDistance={15}
               minPolarAngle={Math.PI * 0.2}
