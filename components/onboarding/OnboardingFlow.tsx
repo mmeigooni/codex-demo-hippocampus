@@ -375,6 +375,37 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   ]);
 
   const narrativeSections = useMemo(() => partitionIntoNarrative(activityEvents, associations), [activityEvents, associations]);
+  const latestImportStatus = useMemo(() => {
+    if (phase !== "importing") {
+      return null;
+    }
+
+    const latestEvent = events[events.length - 1];
+    if (!latestEvent) {
+      return null;
+    }
+
+    const data = latestEvent.data as Record<string, unknown>;
+
+    if (latestEvent.type === "encoding_start") {
+      const title = typeof data.title === "string" && data.title.trim().length > 0 ? data.title.trim() : "Untitled PR";
+      const truncatedTitle = title.length > 60 ? `${title.slice(0, 57)}...` : title;
+      return `Scanning PR #${String(data.pr_number ?? "?")}: ${truncatedTitle}`;
+    }
+
+    if (String(latestEvent.type) === "snippets_extracted") {
+      return `Extracted ${String(data.snippet_count ?? "?")} snippets from ${String(data.file_count ?? "?")} files`;
+    }
+
+    if (latestEvent.type === "episode_created") {
+      const episode = data.episode && typeof data.episode === "object" ? (data.episode as Record<string, unknown>) : null;
+      const pattern = typeof episode?.the_pattern === "string" ? episode.the_pattern : null;
+      const title = typeof episode?.title === "string" && episode.title.trim().length > 0 ? episode.title.trim() : "observation";
+      return pattern ? `Encoded pattern: ${pattern}` : `Encoded: ${title}`;
+    }
+
+    return null;
+  }, [events, phase]);
 
   const statusText = useMemo(() => {
     const activeError = error ?? consolidationError ?? distributionResult?.error ?? null;
@@ -1030,6 +1061,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
               <NarrativeFeed
                 sections={narrativeSections}
                 maxItems={14}
+                importStatusText={latestImportStatus}
                 selectedNodeId={crossSelection.selectedNodeId}
                 selectionSource={crossSelection.selectedNodeId ? crossSelection.source : null}
                 onSelectEvent={handleFeedSelection}
