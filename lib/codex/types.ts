@@ -133,11 +133,6 @@ export type DistributionEventType =
   | "distribution_complete"
   | "distribution_error";
 
-export interface ReasoningDeltaData {
-  text: string;
-  run_id?: string;
-}
-
 export interface DistributionEvent<T = unknown> {
   type: DistributionEventType;
   data: T;
