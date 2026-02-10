@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ComponentProps, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -35,12 +35,6 @@ interface BrainSceneProps {
   externalSelectedNodeId?: string | null;
   onNodeSelectionCommit?: (node: PositionedBrainNode | null) => void;
 }
-
-type BrainGraphPropsWithVisuals = ComponentProps<typeof BrainGraph> & {
-  consolidationVisuals?: ConsolidationVisualState;
-};
-
-const BrainGraphWithVisuals = BrainGraph as unknown as ComponentType<BrainGraphPropsWithVisuals>;
 
 interface AtmosphereControllerProps {
   isConsolidating: boolean;
@@ -164,7 +158,7 @@ export function BrainScene({
             />
 
             <ParticleField isConsolidating={consolidationVisuals?.isConsolidating} />
-            <BrainGraphWithVisuals
+            <BrainGraph
               nodes={nodes}
               edges={edges}
               layoutNodes={layoutNodes}

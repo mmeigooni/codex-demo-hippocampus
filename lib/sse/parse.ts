@@ -1,9 +1,17 @@
-export interface ParsedJsonSseEvent<T = Record<string, unknown>> {
+export interface ParsedJsonSseEvent<T = unknown> {
   type: string;
   data: T;
 }
 
-export function parseJsonSseBuffer<T = Record<string, unknown>>(rawBuffer: string) {
+function toObject(value: unknown) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  return Object.fromEntries(Object.entries(value));
+}
+
+export function parseJsonSseBuffer<T = unknown>(rawBuffer: string) {
   const chunks = rawBuffer.split("\n\n");
   const remainder = chunks.pop() ?? "";
 
@@ -21,7 +29,18 @@ export function parseJsonSseBuffer<T = Record<string, unknown>>(rawBuffer: strin
       }
 
       try {
-        return [JSON.parse(dataLines.join("\n")) as ParsedJsonSseEvent<T>];
+        const parsed = JSON.parse(dataLines.join("\n"));
+        const parsedRecord = toObject(parsed);
+        if (!parsedRecord || typeof parsedRecord.type !== "string" || !("data" in parsedRecord)) {
+          return [];
+        }
+
+        return [
+          {
+            type: parsedRecord.type,
+            data: parsedRecord.data as T,
+          },
+        ];
       } catch {
         return [];
       }
