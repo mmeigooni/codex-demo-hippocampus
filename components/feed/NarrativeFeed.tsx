@@ -340,10 +340,10 @@ export function NarrativeFeed({
         </CollapsiblePhaseSection>
 
         <CollapsiblePhaseSection
-          isActive={sections.phase === "connecting"}
+          isActive={sections.phase === "connecting" && insightRows.length === 0}
           isComplete={insightRows.length > 0}
           summary={<span>{insightsSummary}</span>}
-          label="Insights"
+          label="Why It Matters"
           className="space-y-2"
         >
           <SectionHeader icon={<Sparkles className="h-3.5 w-3.5" />} title="Why It Matters" />

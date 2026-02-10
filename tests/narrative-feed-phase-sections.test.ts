@@ -87,11 +87,12 @@ describe("NarrativeFeed phase sections", () => {
 
     expect(checkmarkCount(html)).toBe(3);
     expect(html).not.toContain("bg-cyan-400/10");
-    expect(html).toContain("Why It Matters");
-    expect(html).toContain("Guard payload validation");
+    expect(html).toContain("1 insights determined");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("Guard payload validation");
   });
 
-  it("keeps insights visible when why-it-matters content is absent", () => {
+  it("shows why-it-matters collapsed grouping when insight rows exist", () => {
     const html = renderToStaticMarkup(
       createElement(NarrativeFeed, {
         sections: makeSections({ phase: "connecting", withWhyItMatters: false }),
@@ -100,8 +101,9 @@ describe("NarrativeFeed phase sections", () => {
 
     expect(checkmarkCount(html)).toBe(3);
     expect(html).not.toContain("bg-cyan-400/10");
-    expect(html).toContain("Why It Matters");
-    expect(html).toContain("Guard payload validation");
+    expect(html).toContain("1 insights determined");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("Guard payload validation");
     expect(html).not.toContain("Prevents malformed writes.");
   });
 });
