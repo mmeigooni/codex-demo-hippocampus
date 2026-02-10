@@ -112,6 +112,31 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     [consolidationError, distributionResult, onboardingImport.error, onboardingImport.events, onboardingImport.phase],
   );
 
+  const statusContent = useMemo(() => {
+    if (
+      onboardingImport.phase === "distributed" &&
+      typeof distributionResult?.prUrl === "string" &&
+      distributionResult.prUrl.length > 0
+    ) {
+      return (
+        <>
+          Distribution complete.{" "}
+          <a
+            href={distributionResult.prUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="underline decoration-zinc-400/70 underline-offset-2 transition hover:text-zinc-100"
+          >
+            PR #{String(distributionResult.prNumber ?? "?")}
+          </a>{" "}
+          created.
+        </>
+      );
+    }
+
+    return statusText;
+  }, [distributionResult?.prNumber, distributionResult?.prUrl, onboardingImport.phase, statusText]);
+
   const displayNodes = useMemo(() => {
     let nodes = onboardingImport.visibleNodeIds
       ? onboardingImport.graph.nodes.filter((node) => onboardingImport.visibleNodeIds?.has(node.id))
@@ -238,7 +263,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           <CardTitle className="text-zinc-100">Memory Timeline</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-zinc-300" aria-live="polite">{statusText}</p>
+          <p className="text-sm text-zinc-300" aria-live="polite">{statusContent}</p>
           {onboardingImport.storageMode === "memory-fallback" ? (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100/90">
               <p>Local fallback mode active: import data is being persisted to in-memory runtime storage because Supabase schema cache is unavailable.</p>
