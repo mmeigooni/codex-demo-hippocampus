@@ -286,7 +286,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           ) : null}
 
           <div className="relative">
-            <div className="grid gap-4 xl:grid-cols-[1fr_1.6fr]">
+            <div className="grid min-h-0 gap-4 xl:h-[732px] xl:grid-cols-[1fr_1.6fr]">
               <div className="h-full min-h-0 overflow-hidden px-1">
                 <NarrativeFeed
                   sections={narrativeSections}
@@ -299,16 +299,18 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
                   onObservationIndexMap={setObservationIndexMap}
                 />
               </div>
-              <BrainSceneClient
-                nodes={displayNodes}
-                edges={displayEdges}
-                layoutNodes={onboardingImport.graph.nodes}
-                layoutEdges={onboardingImport.graph.edges}
-                consolidationVisuals={consolidationVisuals}
-                selectedNarrative={selectedNarrative}
-                externalSelectedNodeId={onboardingImport.crossSelection.selectedNodeId}
-                onNodeSelectionCommit={handleGraphSelectionCommit}
-              />
+              <div className="h-full min-h-0">
+                <BrainSceneClient
+                  nodes={displayNodes}
+                  edges={displayEdges}
+                  layoutNodes={onboardingImport.graph.nodes}
+                  layoutEdges={onboardingImport.graph.edges}
+                  consolidationVisuals={consolidationVisuals}
+                  selectedNarrative={selectedNarrative}
+                  externalSelectedNodeId={onboardingImport.crossSelection.selectedNodeId}
+                  onNodeSelectionCommit={handleGraphSelectionCommit}
+                />
+              </div>
             </div>
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-xl bg-gradient-to-t from-zinc-900/80 to-transparent" />
           </div>
