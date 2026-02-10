@@ -253,11 +253,12 @@ export function NarrativeFeed({
   return (
     <LayoutGroup id="narrative-feed">
       <div className="max-h-[500px] space-y-3 overflow-auto pr-1">
-        {showPhaseProgress ? <PhaseProgressIndicator phase={sections.phase} /> : null}
+        {showPhaseProgress ? <PhaseProgressIndicator phase={sections.phase} complete={showWhySection} /> : null}
         <CollapsiblePhaseSection
           isActive={sections.phase === "observing"}
           isComplete={sections.phase !== "observing"}
           summary={<span>{observationSummary}</span>}
+          label="Observing"
           className="space-y-2"
         >
           <SectionHeader icon={<Eye className="h-3.5 w-3.5" />} title="What I Observed" />
