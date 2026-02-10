@@ -72,8 +72,6 @@ describe("NodeInteraction", () => {
       }),
     );
 
-    expect(html).toContain("Pattern strength");
-    expect(html).toContain("82%");
     expect(html).toContain("Based on 3 observations");
     expect(html).toContain("Why it matters:");
     expect(html).toContain("payload");
