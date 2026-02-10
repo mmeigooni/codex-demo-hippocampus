@@ -250,7 +250,9 @@ export function BrainScene({
         {hasGraphData ? <GraphLegend nodes={nodes} /> : null}
       </div>
 
-      <NodeInteraction node={selectedNode} narrative={selectedNarrative ?? null} />
+      <div className="max-h-[280px] overflow-y-auto rounded-lg">
+        <NodeInteraction node={selectedNode} narrative={selectedNarrative ?? null} />
+      </div>
     </div>
   );
 }
