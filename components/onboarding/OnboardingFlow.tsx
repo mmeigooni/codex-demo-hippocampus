@@ -10,7 +10,9 @@ import {
   deriveStatusText,
   latestImportStatusText,
   PHASE_ORDER,
+  repoSelectorCollapsedStatusText,
   resolveSelectedNarrative as resolveSelectedNarrativeFromActivity,
+  sleepCycleButtonLabel,
 } from "@/components/onboarding/onboarding-activity";
 import { NarrativeFeed } from "@/components/feed/NarrativeFeed";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
@@ -36,7 +38,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     consolidationProgress,
     isConsolidating,
     consolidationError,
-    consolidationSummary,
     reasoningText,
     isReasoningActive,
     handleRunConsolidation,
@@ -58,7 +59,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       activeRepoId: onboardingImport.activeRepoId,
       distributionRepoId: onboardingImport.distributionRepoId,
       setDistributionRepoId: onboardingImport.setDistributionRepoId,
-      consolidationSummary,
       setPhase: onboardingImport.setPhase,
       setError: onboardingImport.setError,
     });
@@ -182,6 +182,10 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   );
 
   const noConsolidatedRules = onboardingImport.activeSelection && !onboardingImport.graphLoading && onboardingImport.graph.stats.ruleCount === 0;
+  const collapsedStatusText = useMemo(
+    () => repoSelectorCollapsedStatusText(onboardingImport.phase, onboardingImport.activeRepo),
+    [onboardingImport.phase, onboardingImport.activeRepo],
+  );
 
   const handleFeedSelection = useCallback((event: ActivityEventView) => {
     const graphNodeId = event.graphNodeId;
@@ -213,6 +217,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         disabled={onboardingImport.phase === "importing" || onboardingImport.phase === "consolidating" || onboardingImport.phase === "distributing"}
         collapsed={PHASE_ORDER[onboardingImport.phase] >= PHASE_ORDER.importing && onboardingImport.phase !== "error"}
         activeRepoName={onboardingImport.activeRepo ?? undefined}
+        collapsedStatusText={collapsedStatusText}
       />
 
       <Card className="border-zinc-800 bg-zinc-900/40">
@@ -252,11 +257,11 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           <div className="flex flex-wrap items-center gap-2">
             {PHASE_ORDER[onboardingImport.phase] >= PHASE_ORDER.ready ? (
               <Button onClick={handleRunConsolidation} disabled={isConsolidating || isDistributing || !onboardingImport.activeRepoId}>
-                {isConsolidating ? "Running sleep cycle..." : "Run Sleep Cycle"}
+                {sleepCycleButtonLabel(onboardingImport.phase, isConsolidating)}
               </Button>
             ) : null}
             {PHASE_ORDER[onboardingImport.phase] >= PHASE_ORDER.consolidated ? (
-              <Button onClick={handleRunDistribution} disabled={isConsolidating || isDistributing || !consolidationSummary?.pack} variant="secondary">
+              <Button onClick={handleRunDistribution} disabled={isConsolidating || isDistributing || !onboardingImport.activeRepoId} variant="secondary">
                 {isDistributing ? "Distributing..." : distributionResult && !distributionResult.error ? "Distributed" : "Distribute to repo"}
               </Button>
             ) : null}

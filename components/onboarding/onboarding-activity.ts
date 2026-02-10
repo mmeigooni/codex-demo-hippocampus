@@ -52,6 +52,48 @@ export function moveForwardPhase(current: OnboardingPhase, next: OnboardingPhase
   return PHASE_ORDER[next] >= PHASE_ORDER[current] ? next : current;
 }
 
+export function sleepCycleButtonLabel(phase: OnboardingPhase, isConsolidating: boolean) {
+  if (isConsolidating) {
+    return "Running sleep cycle...";
+  }
+
+  if (phase === "consolidated" || phase === "distributing" || phase === "distributed") {
+    return "Re-run Sleep Cycle";
+  }
+
+  return "Run Sleep Cycle";
+}
+
+export function repoSelectorCollapsedStatusText(phase: OnboardingPhase, activeRepo: string | null) {
+  const repoLabel = activeRepo ?? "repository";
+
+  if (phase === "importing") {
+    return `Importing ${repoLabel}...`;
+  }
+
+  if (phase === "ready") {
+    return `Import complete for ${repoLabel}.`;
+  }
+
+  if (phase === "consolidating") {
+    return `Running Sleep Cycle for ${repoLabel}...`;
+  }
+
+  if (phase === "consolidated") {
+    return `Sleep Cycle complete for ${repoLabel}.`;
+  }
+
+  if (phase === "distributing") {
+    return `Distributing to repo for ${repoLabel}...`;
+  }
+
+  if (phase === "distributed") {
+    return `Distribution complete for ${repoLabel}.`;
+  }
+
+  return `Connected to ${repoLabel}.`;
+}
+
 export function nonEmptyText(value: unknown) {
   if (typeof value !== "string") {
     return null;
