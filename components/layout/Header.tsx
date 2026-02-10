@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 
 import { LogoutButton } from "@/components/layout/LogoutButton";
 
@@ -24,16 +23,6 @@ export function Header({ githubUsername, avatarUrl }: HeaderProps) {
           <p className="text-sm text-zinc-400">Team Memory</p>
         </div>
       </div>
-
-      <nav className="flex items-center gap-4">
-        <Link
-          href="/sleep-cycle"
-          className="text-xs text-zinc-500 transition hover:text-zinc-300"
-        >
-          Sleep Cycle
-        </Link>
-      </nav>
-
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 rounded-full border border-zinc-700/60 bg-zinc-900/50 px-3 py-1.5">
           {avatarUrl ? (
