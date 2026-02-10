@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 
 import type { PositionedBrainNode } from "@/components/brain/types";
+import { resolveClusterColor } from "@/lib/feed/card-color";
 import { patternDisplayLabel } from "@/lib/feed/narrative-partition";
 
 interface SelectedNarrative {
@@ -12,6 +13,11 @@ interface SelectedNarrative {
   whyItMatters?: string;
   ruleConfidence?: number;
   ruleEpisodeCount?: number;
+  sourceObservations?: Array<{
+    graphNodeId: string;
+    observationIndex: number;
+    whyItMatters?: string;
+  }>;
 }
 
 interface NodeInteractionProps {
@@ -87,6 +93,68 @@ function resolveNarrativeSections(narrative: SelectedNarrative | null | undefine
   });
 }
 
+function ObservationDotTrail({
+  observations,
+}: {
+  observations: SelectedNarrative["sourceObservations"];
+}) {
+  if (!observations || observations.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-zinc-400">
+        Determined from {observations.length} observation{observations.length === 1 ? "" : "s"}
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {observations.map((observation, index) => {
+          const color = resolveClusterColor(observation.graphNodeId, {});
+          return (
+            <span key={`${observation.graphNodeId}-${index}`} className="flex items-center gap-0.5">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color.accent }} />
+              <span className="font-mono text-[9px] text-zinc-500">#{observation.observationIndex}</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function InsightBulletPoints({
+  observations,
+}: {
+  observations: SelectedNarrative["sourceObservations"];
+}) {
+  if (!observations || observations.length === 0) {
+    return null;
+  }
+
+  const points = Array.from(
+    new Set(
+      observations
+        .map((observation) => normalizeText(observation.whyItMatters))
+        .filter((entry): entry is string => entry !== null),
+    ),
+  );
+
+  if (points.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-zinc-500">Why It Matters</p>
+      <ul className="space-y-1 text-xs text-zinc-300">
+        {points.map((point) => (
+          <li key={point}>• {point}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function RuleSummary({
   node,
   narrative,
@@ -132,6 +200,12 @@ function RuleSummary({
         <p className="text-xs italic text-zinc-400">
           <span className="font-semibold not-italic text-zinc-300">Why it matters:</span> {explanation}
         </p>
+      ) : null}
+      {narrative?.sourceObservations && narrative.sourceObservations.length > 0 ? (
+        <>
+          <InsightBulletPoints observations={narrative.sourceObservations} />
+          <ObservationDotTrail observations={narrative.sourceObservations} />
+        </>
       ) : null}
     </div>
   );
