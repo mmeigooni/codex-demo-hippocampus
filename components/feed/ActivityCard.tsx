@@ -84,7 +84,9 @@ export function ActivityCard({
   onSelect,
   tier = "default",
 }: ActivityCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(
+    event.type === "distribution_complete" || event.type === "distribution_error",
+  );
   const isMilestone = tier === "milestone";
 
   useEffect(() => {
@@ -232,6 +234,45 @@ export function ActivityCard({
                 <span className="font-medium text-zinc-300 not-italic">Why it matters:</span>{" "}
                 {event.whyItMatters}
               </p>
+            ) : null}
+
+            {event.type === "distribution_complete" ? (
+              <div className="space-y-2">
+                {typeof event.raw.prUrl === "string" ? (
+                  <p className="text-xs text-emerald-200">
+                    PR{" "}
+                    <a
+                      href={event.raw.prUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline decoration-emerald-300/70 underline-offset-2"
+                    >
+                      #{String(event.raw.prNumber ?? "?")}
+                    </a>
+                    {typeof event.raw.branch === "string" ? ` (${event.raw.branch})` : ""}
+                  </p>
+                ) : null}
+                {typeof event.raw.markdown === "string" && event.raw.markdown.length > 0 ? (
+                  <details className="rounded-md border border-zinc-800 bg-zinc-950/60 p-2">
+                    <summary className="cursor-pointer text-xs text-zinc-300">team-memory.md</summary>
+                    <div className="mt-2 space-y-1">
+                      <button
+                        type="button"
+                        onClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                          void navigator.clipboard.writeText(String(event.raw.markdown));
+                        }}
+                        className="rounded border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-700/60"
+                      >
+                        Copy markdown
+                      </button>
+                      <pre className="max-h-60 overflow-auto rounded border border-zinc-800 bg-zinc-950 p-2 text-[11px] text-zinc-300">
+                        {String(event.raw.markdown)}
+                      </pre>
+                    </div>
+                  </details>
+                ) : null}
+              </div>
             ) : null}
           </motion.div>
         ) : null}
