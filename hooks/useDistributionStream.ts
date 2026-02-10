@@ -56,7 +56,6 @@ export function useDistributionStream() {
   const [isDistributing, setIsDistributing] = useState(false);
   const [distributionResult, setDistributionResult] = useState<DistributionResult | null>(null);
   const [distributionPhase, setDistributionPhase] = useState<string | null>(null);
-  const [copiedMarkdown, setCopiedMarkdown] = useState(false);
 
   const runDistribution = useCallback(async (repoId: string) => {
     if (!repoId) {
@@ -66,7 +65,6 @@ export function useDistributionStream() {
     setIsDistributing(true);
     setDistributionResult(null);
     setDistributionPhase("Preparing distribution...");
-    setCopiedMarkdown(false);
 
     try {
       const response = await fetch("/api/distribute", {
@@ -142,26 +140,10 @@ export function useDistributionStream() {
     }
   }, []);
 
-  const copyDistributionMarkdown = useCallback(async () => {
-    if (!distributionResult?.markdown) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(distributionResult.markdown);
-      setCopiedMarkdown(true);
-      setTimeout(() => setCopiedMarkdown(false), 2000);
-    } catch {
-      setCopiedMarkdown(false);
-    }
-  }, [distributionResult?.markdown]);
-
   return {
     runDistribution,
     isDistributing,
     distributionResult,
     distributionPhase,
-    copiedMarkdown,
-    copyDistributionMarkdown,
   };
 }
