@@ -29,7 +29,7 @@ describe("createCodexThread", () => {
 
     expect(startThreadMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "gpt-5",
+        model: "gpt-5.2",
         modelReasoningEffort: "high",
       }),
     );
@@ -42,6 +42,18 @@ describe("createCodexThread", () => {
     expect(startThreadMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gpt-5-mini",
+        modelReasoningEffort: "medium",
+      }),
+    );
+  });
+
+  it("keeps nano tier model and effort mapping unchanged", async () => {
+    const { createCodexThread } = await import("@/lib/codex/client");
+    createCodexThread("nano");
+
+    expect(startThreadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-5-nano",
         modelReasoningEffort: "medium",
       }),
     );

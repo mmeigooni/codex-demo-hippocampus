@@ -2,7 +2,7 @@ import { Codex, type Thread } from "@openai/codex-sdk";
 
 const DEFAULT_MODEL = "gpt-5-mini";
 const NANO_MODEL = "gpt-5-nano";
-const CONSOLIDATION_MODEL = "gpt-5";
+const CONSOLIDATION_MODEL = "gpt-5.2";
 
 let codexClient: Codex | null = null;
 
