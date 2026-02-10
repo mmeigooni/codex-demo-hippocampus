@@ -417,12 +417,6 @@ export function BrainGraph({
         );
       })}
 
-      {selectedNode ? (
-        <mesh position={selectedNode.position}>
-          <sphereGeometry args={[selectedNode.type === "rule" ? 0.9 : 0.5, 18, 18]} />
-          <meshBasicMaterial color="#e0f2fe" transparent opacity={0.08} />
-        </mesh>
-      ) : null}
     </group>
   );
 }
