@@ -194,7 +194,7 @@ export function BrainScene({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="h-full min-h-0 space-y-3">
       <div
         className="relative h-[440px] overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(circle_at_top,_#042f2e_0%,_#020617_65%)]"
         onPointerEnter={handleCanvasPointerEnter}
@@ -251,7 +251,7 @@ export function BrainScene({
         {hasGraphData ? <GraphLegend nodes={nodes} /> : null}
       </div>
 
-      <div className="max-h-[280px] overflow-y-auto rounded-lg">
+      <div className="h-[280px] min-h-0 overflow-y-auto rounded-lg">
         <NodeInteraction node={selectedNode} narrative={selectedNarrative ?? null} />
       </div>
     </div>
