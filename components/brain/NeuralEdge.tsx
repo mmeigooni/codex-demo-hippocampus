@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { Line } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { MathUtils } from "three";
+import type { Line2 } from "three-stdlib";
 
 interface NeuralEdgeProps {
   from: [number, number, number];
@@ -20,10 +21,9 @@ export function NeuralEdge({
   color = "#38bdf8",
   highlighted = false,
 }: NeuralEdgeProps) {
+  const lineRef = useRef<Line2 | null>(null);
   const baseOpacity = Math.max(0.45, Math.min(0.9, weight));
   const baseLineWidth = 1.5 + weight * 2;
-  const [currentOpacity, setCurrentOpacity] = useState(0);
-  const [currentLineWidth, setCurrentLineWidth] = useState(baseLineWidth);
   const spawnProgressRef = useRef(0);
   const spawnGlowRef = useRef(1);
   const highlightProgressRef = useRef(0);
@@ -50,19 +50,36 @@ export function NeuralEdge({
     const nextOpacity = (baseOpacity + glowBoost + highlightBoost * 0.2) * eased;
     const nextLineWidth = baseLineWidth + highlightBoost * 1.5;
 
-    setCurrentOpacity((previous) => (Math.abs(previous - nextOpacity) < 0.001 ? previous : nextOpacity));
-    setCurrentLineWidth((previous) =>
-      Math.abs(previous - nextLineWidth) < 0.001 ? previous : nextLineWidth,
-    );
+    const material = lineRef.current?.material as
+      | {
+          opacity?: number;
+          linewidth?: number;
+          needsUpdate?: boolean;
+        }
+      | undefined;
+    if (!material) {
+      return;
+    }
+
+    if (typeof material.opacity === "number" && Math.abs(material.opacity - nextOpacity) >= 0.001) {
+      material.opacity = nextOpacity;
+      material.needsUpdate = true;
+    }
+
+    if (typeof material.linewidth === "number" && Math.abs(material.linewidth - nextLineWidth) >= 0.001) {
+      material.linewidth = nextLineWidth;
+      material.needsUpdate = true;
+    }
   });
 
   return (
     <Line
+      ref={lineRef}
       points={[from, to]}
       color={color}
-      lineWidth={currentLineWidth}
+      lineWidth={baseLineWidth}
       transparent
-      opacity={currentOpacity}
+      opacity={0}
     />
   );
 }
