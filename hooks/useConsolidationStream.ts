@@ -40,6 +40,70 @@ interface UseConsolidationStreamOptions {
   initialPack?: ConsolidationModelOutput | null;
 }
 
+const CONSOLIDATION_EVENT_TYPES: ConsolidationEventType[] = [
+  "replay_manifest",
+  "consolidation_start",
+  "reasoning_start",
+  "reasoning_delta",
+  "reasoning_complete",
+  "response_start",
+  "response_delta",
+  "pattern_detected",
+  "rule_promoted",
+  "contradiction_found",
+  "salience_updated",
+  "consolidation_complete",
+  "consolidation_error",
+];
+
+function toObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(Object.entries(value));
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function isConsolidationEventType(value: string): value is ConsolidationEventType {
+  return CONSOLIDATION_EVENT_TYPES.includes(value as ConsolidationEventType);
+}
+
+function toConsolidationEvent(event: { type: string; data: unknown }): ConsolidationEvent | null {
+  if (!isConsolidationEventType(event.type)) {
+    return null;
+  }
+
+  return {
+    type: event.type,
+    data: event.data,
+  };
+}
+
+function parseConsolidationSummary(value: unknown): ConsolidationSummary | null {
+  const summaryRecord = toObject(value);
+  if (Object.keys(summaryRecord).length === 0) {
+    return null;
+  }
+
+  const countsRecord = toObject(summaryRecord.counts);
+  const counts: ConsolidationSummary["counts"] = {
+    patterns: asNumber(countsRecord.patterns),
+    rules_promoted: asNumber(countsRecord.rules_promoted),
+    salience_updates: asNumber(countsRecord.salience_updates),
+    contradictions: asNumber(countsRecord.contradictions),
+  };
+
+  return { counts };
+}
+
 function nextDreamPhase(current: DreamPhase, eventType: ConsolidationEventType): DreamPhase {
   if (eventType === "consolidation_error") {
     return "error";
@@ -79,7 +143,7 @@ function nextDreamPhase(current: DreamPhase, eventType: ConsolidationEventType):
 }
 
 function updateProgress(current: ConsolidationProgress, event: ConsolidationEvent): ConsolidationProgress {
-  const data = event.data as Record<string, unknown>;
+  const data = toObject(event.data);
 
   if (event.type === "pattern_detected") {
     return { ...current, patterns: current.patterns + 1 };
@@ -98,12 +162,12 @@ function updateProgress(current: ConsolidationProgress, event: ConsolidationEven
   }
 
   if (event.type === "consolidation_complete") {
-    const summary = (data.summary ?? {}) as ConsolidationSummary;
+    const summary = parseConsolidationSummary(data.summary);
     return {
-      patterns: Number(summary.counts?.patterns ?? current.patterns),
-      rules: Number(summary.counts?.rules_promoted ?? current.rules),
-      salienceUpdates: Number(summary.counts?.salience_updates ?? current.salienceUpdates),
-      contradictions: Number(summary.counts?.contradictions ?? current.contradictions),
+      patterns: Number(summary?.counts?.patterns ?? current.patterns),
+      rules: Number(summary?.counts?.rules_promoted ?? current.rules),
+      salienceUpdates: Number(summary?.counts?.salience_updates ?? current.salienceUpdates),
+      contradictions: Number(summary?.counts?.contradictions ?? current.contradictions),
     };
   }
 
@@ -163,39 +227,39 @@ export function useConsolidationStream({ initialPack = null }: UseConsolidationS
       }
 
       if (event.type === "reasoning_delta") {
-        const data = event.data as { text?: unknown };
+        const data = toObject(event.data);
         setIsReasoningActive(true);
-        setReasoningText(typeof data.text === "string" ? data.text : "");
+        setReasoningText(asString(data.text) ?? "");
         continue;
       }
 
       if (event.type === "reasoning_complete") {
-        const data = event.data as { text?: unknown };
+        const data = toObject(event.data);
         setIsReasoningActive(false);
-        if (typeof data.text === "string") {
-          setReasoningText(data.text);
+        const text = asString(data.text);
+        if (text) {
+          setReasoningText(text);
         }
         continue;
       }
 
       if (event.type === "consolidation_complete") {
-        const data = event.data as Record<string, unknown>;
-        const completeSummary = (data.summary ?? null) as ConsolidationSummary | null;
+        const data = toObject(event.data);
+        const completeSummary = parseConsolidationSummary(data.summary);
         setSummary(completeSummary);
         continue;
       }
 
       if (event.type === "consolidation_error") {
-        const data = event.data as Record<string, unknown>;
-        setError(String(data.message ?? "Consolidation failed"));
+        const data = toObject(event.data);
+        setError(String(asString(data.message) ?? "Consolidation failed"));
       }
     }
   }, []);
 
   const { enqueue: enqueueReplayEvents, cancel: cancelReplayEvents } = useTheatricalScheduler<ConsolidationScheduledEvent>({
     onEventRelease: (event) => {
-      const { streamText: _streamText, ...baseEvent } = event;
-      applyConsolidationEvents([baseEvent as ConsolidationEvent]);
+      applyConsolidationEvents([{ type: event.type, data: event.data }]);
     },
     onTextStreamChunk: (_event, text) => {
       setIsReasoningActive(true);
@@ -280,13 +344,19 @@ export function useConsolidationStream({ initialPack = null }: UseConsolidationS
             continue;
           }
 
-          const chunkEvents = parsed.events as ConsolidationEvent[];
+          const chunkEvents = parsed.events
+            .map(toConsolidationEvent)
+            .filter((event): event is ConsolidationEvent => event !== null);
+          if (chunkEvents.length === 0) {
+            continue;
+          }
+
           const replayDetected = chunkEvents.some((event) => {
             if (event.type !== "replay_manifest") {
               return false;
             }
 
-            const data = event.data as Record<string, unknown>;
+            const data = toObject(event.data);
             return data.mode === "consolidation_replay";
           });
 
@@ -312,8 +382,8 @@ export function useConsolidationStream({ initialPack = null }: UseConsolidationS
               return event;
             }
 
-            const data = event.data as Record<string, unknown>;
-            const text = typeof data.text === "string" ? data.text : "";
+            const data = toObject(event.data);
+            const text = asString(data.text) ?? "";
             if (text.length === 0) {
               return event;
             }

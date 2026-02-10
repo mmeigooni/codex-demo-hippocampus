@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 
-import type { DistributionEvent } from "@/lib/codex/types";
+import type { DistributionEvent, DistributionEventType } from "@/lib/codex/types";
 import { parseJsonSseBuffer } from "@/lib/sse/parse";
 
 export interface DistributionResult {
@@ -22,6 +22,61 @@ interface DistributionCompleteEventData {
   pr_url?: string;
   pr_number?: number;
   branch?: string;
+}
+
+const DISTRIBUTION_EVENT_TYPES: DistributionEventType[] = [
+  "distribution_start",
+  "pack_rendered",
+  "branch_created",
+  "file_committed",
+  "pr_creating",
+  "pr_created",
+  "distribution_complete",
+  "distribution_error",
+];
+
+function toObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(Object.entries(value));
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function isDistributionEventType(value: string): value is DistributionEventType {
+  return DISTRIBUTION_EVENT_TYPES.includes(value as DistributionEventType);
+}
+
+function toDistributionEvent(event: { type: string; data: unknown }): DistributionEvent | null {
+  if (!isDistributionEventType(event.type)) {
+    return null;
+  }
+
+  return {
+    type: event.type,
+    data: event.data,
+  };
+}
+
+function parseDistributionCompleteData(value: unknown): DistributionCompleteEventData {
+  const data = toObject(value);
+
+  return {
+    skipped_pr: Boolean(data.skipped_pr),
+    reason: asString(data.reason),
+    markdown: asString(data.markdown) ?? "",
+    pr_url: asString(data.pr_url),
+    pr_number: asNumber(data.pr_number),
+    branch: asString(data.branch),
+  };
 }
 
 function mapDistributionPhase(eventType: DistributionEvent["type"]): string | null {
@@ -98,7 +153,9 @@ export function useDistributionStream() {
           continue;
         }
 
-        const chunkEvents = parsed.events as DistributionEvent[];
+        const chunkEvents = parsed.events
+          .map(toDistributionEvent)
+          .filter((event): event is DistributionEvent => event !== null);
 
         for (const event of chunkEvents) {
           const phase = mapDistributionPhase(event.type);
@@ -107,7 +164,7 @@ export function useDistributionStream() {
           }
 
           if (event.type === "distribution_complete") {
-            const data = event.data as DistributionCompleteEventData;
+            const data = parseDistributionCompleteData(event.data);
             setDistributionResult({
               prUrl: data.pr_url,
               prNumber: data.pr_number,
@@ -120,7 +177,7 @@ export function useDistributionStream() {
           }
 
           if (event.type === "distribution_error") {
-            const data = event.data as Record<string, unknown>;
+            const data = toObject(event.data);
             setDistributionResult({
               skippedPr: true,
               error: String(data.message ?? "Distribution failed"),

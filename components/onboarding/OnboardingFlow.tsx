@@ -34,7 +34,6 @@ interface OnboardingFlowProps {
   demoRepoFullName: string;
 }
 
-type ImportPhase = "idle" | "importing" | "ready" | "error";
 type StorageMode = "supabase" | "memory-fallback";
 type OnboardingPhase =
   | "idle"
@@ -124,10 +123,26 @@ function numberFromUnknown(value: unknown) {
   return null;
 }
 
+function toObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(Object.entries(value));
+}
+
+function toNullableObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  return Object.fromEntries(Object.entries(value));
+}
+
 function resolvePatternFromRaw(raw: Record<string, unknown>) {
   const nestedEpisode = raw.episode;
   if (nestedEpisode && typeof nestedEpisode === "object") {
-    const nestedPattern = nonEmptyText((nestedEpisode as Record<string, unknown>).the_pattern);
+    const nestedPattern = nonEmptyText(toObject(nestedEpisode).the_pattern);
     if (nestedPattern) {
       return nestedPattern;
     }
@@ -298,7 +313,7 @@ function extractEventsFromBuffer(rawBuffer: string) {
 
 function consolidationEventToActivity(event: ConsolidationEvent, index: number): ActivityEventView | null {
   const prefix = `consolidation-${event.type}-${index}`;
-  const data = (event.data ?? {}) as Record<string, unknown>;
+  const data = toObject(event.data);
 
   if (
     event.type === "replay_manifest" ||
@@ -371,8 +386,8 @@ function consolidationEventToActivity(event: ConsolidationEvent, index: number):
   }
 
   if (event.type === "consolidation_complete") {
-    const summary = (data.summary ?? {}) as Record<string, unknown>;
-    const counts = (summary.counts ?? {}) as Record<string, unknown>;
+    const summary = toObject(data.summary);
+    const counts = toObject(summary.counts);
     return {
       id: prefix,
       type: event.type,
@@ -524,7 +539,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
             ? `PR #${distributionResult.prNumber ?? "?"} is ready`
             : distributionResult.reason,
         variant: "distribution",
-        raw: distributionResult as unknown as Record<string, unknown>,
+        raw: toObject(distributionResult),
       });
     }
 
@@ -565,7 +580,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       return null;
     }
 
-    const data = latestEvent.data as Record<string, unknown>;
+    const data = toObject(latestEvent.data);
 
     if (latestEvent.type === "encoding_start") {
       const title = typeof data.title === "string" && data.title.trim().length > 0 ? data.title.trim() : "Untitled PR";
@@ -578,7 +593,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     }
 
     if (latestEvent.type === "episode_created") {
-      const episode = data.episode && typeof data.episode === "object" ? (data.episode as Record<string, unknown>) : null;
+      const episode = toNullableObject(data.episode);
       const pattern = typeof episode?.the_pattern === "string" ? episode.the_pattern : null;
       const title = typeof episode?.title === "string" && episode.title.trim().length > 0 ? episode.title.trim() : "observation";
       return pattern ? `Encoded pattern: ${pattern}` : `Encoded: ${title}`;
@@ -746,7 +761,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
       if (visibleEvents.some((event) => event.type === "complete")) {
         const completeEvent = visibleEvents.findLast((event) => event.type === "complete");
-        const completeData = completeEvent?.data as Record<string, unknown> | undefined;
+        const completeData = completeEvent ? toObject(completeEvent.data) : undefined;
         if (typeof completeData?.repo_id === "string") {
           if (runId !== undefined && importRunIdRef.current !== runId) {
             return;
@@ -1041,7 +1056,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
       }
 
       if (event.type === "rule_promoted") {
-        const eventData = event.data as Record<string, unknown>;
+        const eventData = toObject(event.data);
         setAssociations((current) => applyRulePromotedEvent(current, eventData));
         const ruleId = eventData.rule_id;
         if (typeof ruleId === "string" && ruleId.length > 0) {
