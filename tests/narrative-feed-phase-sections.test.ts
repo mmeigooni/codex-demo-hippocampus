@@ -72,9 +72,10 @@ describe("NarrativeFeed phase sections", () => {
       }),
     );
 
-    expect(html).toContain("Observing");
+    expect(html).toContain("Code Reviews");
     expect(html).toContain("1 code reviews observed");
     expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain("Patterns Discovered");
   });
 
   it("marks connecting complete once why-it-matters content is present", () => {
@@ -87,6 +88,7 @@ describe("NarrativeFeed phase sections", () => {
     expect(checkmarkCount(html)).toBe(3);
     expect(html).not.toContain("bg-cyan-400/10");
     expect(html).toContain("Why It Matters");
+    expect(html).toContain("Guard payload validation (1 observation)");
   });
 
   it("keeps connecting active when why-it-matters content is absent", () => {
@@ -98,6 +100,7 @@ describe("NarrativeFeed phase sections", () => {
 
     expect(checkmarkCount(html)).toBe(2);
     expect(html).toContain("bg-cyan-400/10");
-    expect(html).not.toContain("Why It Matters");
+    expect(html).toContain("Why It Matters");
+    expect(html).not.toContain("Prevents malformed writes.");
   });
 });
