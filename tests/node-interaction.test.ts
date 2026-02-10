@@ -50,7 +50,7 @@ describe("NodeInteraction", () => {
     expect(html).toContain("Added schema checks in the request layer.");
   });
 
-  it("renders rule hybrid fallback details including confidence and observation count", () => {
+  it("renders rule hybrid fallback details with inline explanation and observation trail", () => {
     const node = positionedNode({
       id: "rule-1",
       type: "rule",
@@ -89,14 +89,11 @@ describe("NodeInteraction", () => {
       }),
     );
 
-    expect(html).toContain("Based on 3 observations");
     expect(html).toContain("Why it matters:");
-    expect(html).toContain("Why It Matters");
     expect(html).toContain("Determined from 3 observations");
     expect(html).toContain("#1");
     expect(html).toContain("#2");
     expect(html).toContain("#3");
-    expect(html).toContain("Prevents malformed writes.");
     expect(html).toContain("payload");
     expect(html).toContain("validation");
   });

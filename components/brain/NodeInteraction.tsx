@@ -48,19 +48,6 @@ function normalizeText(value: string | undefined) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function isFiniteNumber(value: number | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function resolveObservationCount(count: number | undefined) {
-  if (!isFiniteNumber(count)) {
-    return null;
-  }
-
-  const normalized = Math.round(count);
-  return normalized >= 0 ? normalized : null;
-}
-
 function sectionColorForIndex(index: number): SectionColor {
   if (index === 2) {
     return {
@@ -122,39 +109,6 @@ function ObservationDotTrail({
   );
 }
 
-function InsightBulletPoints({
-  observations,
-}: {
-  observations: SelectedNarrative["sourceObservations"];
-}) {
-  if (!observations || observations.length === 0) {
-    return null;
-  }
-
-  const points = Array.from(
-    new Set(
-      observations
-        .map((observation) => normalizeText(observation.whyItMatters))
-        .filter((entry): entry is string => entry !== null),
-    ),
-  );
-
-  if (points.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="space-y-1">
-      <p className="text-xs text-zinc-500">Why It Matters</p>
-      <ul className="space-y-1 text-xs text-zinc-300">
-        {points.map((point) => (
-          <li key={point}>• {point}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function RuleSummary({
   node,
   narrative,
@@ -163,7 +117,6 @@ function RuleSummary({
   narrative: SelectedNarrative | null | undefined;
 }) {
   const triggerCount = node.triggers.length;
-  const observationCount = resolveObservationCount(narrative?.ruleEpisodeCount);
   const patternLabel = normalizeText(narrative?.thePattern) ?? patternDisplayLabel(node.patternKey);
   const explanation = normalizeText(narrative?.whyItMatters);
 
@@ -174,11 +127,7 @@ function RuleSummary({
       <p className="text-xs text-zinc-300">
         <span className="font-semibold text-zinc-200">Pattern:</span> {patternLabel}
       </p>
-      {observationCount !== null ? (
-        <p className="text-xs text-zinc-400">
-          Based on {observationCount} observation{observationCount === 1 ? "" : "s"}
-        </p>
-      ) : null}
+      <ObservationDotTrail observations={narrative?.sourceObservations} />
       <div className="space-y-1">
         <p className="text-xs text-zinc-500">Triggers</p>
         {triggerCount > 0 ? (
@@ -200,12 +149,6 @@ function RuleSummary({
         <p className="text-xs italic text-zinc-400">
           <span className="font-semibold not-italic text-zinc-300">Why it matters:</span> {explanation}
         </p>
-      ) : null}
-      {narrative?.sourceObservations && narrative.sourceObservations.length > 0 ? (
-        <>
-          <InsightBulletPoints observations={narrative.sourceObservations} />
-          <ObservationDotTrail observations={narrative.sourceObservations} />
-        </>
       ) : null}
     </div>
   );
