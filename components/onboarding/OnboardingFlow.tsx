@@ -21,8 +21,8 @@ import { useDistributionStream } from "@/hooks/useDistributionStream";
 import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent } from "@/lib/codex/types";
 import { applyRulePromotedEvent, type AssociationMap } from "@/lib/feed/association-state";
-import { partitionIntoNarrative } from "@/lib/feed/narrative-partition";
-import { graphNodeIdFromConsolidationEvent } from "@/lib/feed/cross-selection";
+import { partitionIntoNarrative, patternDisplayLabel } from "@/lib/feed/narrative-partition";
+import { activityEventMatchesNodeId, graphNodeIdFromConsolidationEvent } from "@/lib/feed/cross-selection";
 import { toImportActivityEvent } from "@/lib/feed/import-activity";
 import {
   resolveImportStreamMode,
@@ -61,6 +61,22 @@ interface GraphPayload {
   };
 }
 
+export interface SelectedNarrative {
+  whatHappened?: string;
+  thePattern?: string;
+  theFix?: string;
+  whyItMatters?: string;
+  ruleConfidence?: number;
+  ruleEpisodeCount?: number;
+}
+
+interface ResolveSelectedNarrativeInput {
+  activityEvents: ActivityEventView[];
+  selectedNodeId: string | null;
+  selectedNodeType: BrainNodeModel["type"] | null;
+  selectedPatternKey: string | null;
+}
+
 const EMPTY_GRAPH: GraphPayload = {
   nodes: [],
   edges: [],
@@ -83,6 +99,174 @@ const PHASE_ORDER: Record<OnboardingPhase, number> = {
 
 function moveForwardPhase(current: OnboardingPhase, next: OnboardingPhase) {
   return PHASE_ORDER[next] >= PHASE_ORDER[current] ? next : current;
+}
+
+function nonEmptyText(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function numberFromUnknown(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function resolvePatternFromRaw(raw: Record<string, unknown>) {
+  const nestedEpisode = raw.episode;
+  if (nestedEpisode && typeof nestedEpisode === "object") {
+    const nestedPattern = nonEmptyText((nestedEpisode as Record<string, unknown>).the_pattern);
+    if (nestedPattern) {
+      return nestedPattern;
+    }
+  }
+
+  const topLevelPattern = nonEmptyText(raw.the_pattern);
+  if (topLevelPattern) {
+    return topLevelPattern;
+  }
+
+  return null;
+}
+
+function hasNarrativeContent(narrative: SelectedNarrative) {
+  return (
+    nonEmptyText(narrative.whatHappened) !== null ||
+    nonEmptyText(narrative.thePattern) !== null ||
+    nonEmptyText(narrative.theFix) !== null ||
+    nonEmptyText(narrative.whyItMatters) !== null ||
+    (typeof narrative.ruleConfidence === "number" && Number.isFinite(narrative.ruleConfidence)) ||
+    (typeof narrative.ruleEpisodeCount === "number" && Number.isFinite(narrative.ruleEpisodeCount))
+  );
+}
+
+function latestMatchingEpisodeEvent(activityEvents: ActivityEventView[], selectedNodeId: string) {
+  for (let index = activityEvents.length - 1; index >= 0; index -= 1) {
+    const event = activityEvents[index];
+    if (!event) {
+      continue;
+    }
+
+    if (event.type === "episode_created" && activityEventMatchesNodeId(event, selectedNodeId)) {
+      return event;
+    }
+
+    if (Array.isArray(event.groupedEpisodes) && event.groupedEpisodes.length > 0) {
+      for (let nestedIndex = event.groupedEpisodes.length - 1; nestedIndex >= 0; nestedIndex -= 1) {
+        const nestedEvent = event.groupedEpisodes[nestedIndex];
+        if (!nestedEvent || nestedEvent.type !== "episode_created") {
+          continue;
+        }
+
+        if (activityEventMatchesNodeId(nestedEvent, selectedNodeId)) {
+          return nestedEvent;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function latestMatchingRuleEvent(activityEvents: ActivityEventView[], selectedNodeId: string) {
+  for (let index = activityEvents.length - 1; index >= 0; index -= 1) {
+    const event = activityEvents[index];
+    if (!event || event.type !== "rule_promoted") {
+      continue;
+    }
+
+    if (activityEventMatchesNodeId(event, selectedNodeId)) {
+      return event;
+    }
+  }
+
+  return null;
+}
+
+function resolveRuleEpisodeCount(ruleEvent: ActivityEventView | null) {
+  if (!ruleEvent) {
+    return null;
+  }
+
+  const explicitCount = numberFromUnknown(ruleEvent.raw.episode_count);
+  if (explicitCount !== null) {
+    return explicitCount;
+  }
+
+  if (Array.isArray(ruleEvent.raw.source_episode_ids)) {
+    return ruleEvent.raw.source_episode_ids.length;
+  }
+
+  return null;
+}
+
+export function resolveSelectedNarrative({
+  activityEvents,
+  selectedNodeId,
+  selectedNodeType,
+  selectedPatternKey,
+}: ResolveSelectedNarrativeInput): SelectedNarrative | null {
+  if (!selectedNodeId) {
+    return null;
+  }
+
+  const isRuleNode = selectedNodeType === "rule" || selectedNodeId.startsWith("rule-");
+  if (isRuleNode) {
+    const matchingRuleEvent = latestMatchingRuleEvent(activityEvents, selectedNodeId);
+    const patternFromNode = nonEmptyText(selectedPatternKey);
+    const patternFromRuleEvent = nonEmptyText(matchingRuleEvent?.raw.rule_key);
+    const resolvedPatternKey = patternFromNode ?? patternFromRuleEvent;
+    const patternLabel = resolvedPatternKey ? patternDisplayLabel(resolvedPatternKey) : undefined;
+
+    const ruleConfidence = numberFromUnknown(matchingRuleEvent?.raw.confidence) ?? undefined;
+    const ruleEpisodeCount = resolveRuleEpisodeCount(matchingRuleEvent) ?? undefined;
+    const whyItMatters = nonEmptyText(matchingRuleEvent?.raw.description) ?? undefined;
+    const whatHappened =
+      typeof ruleEpisodeCount === "number"
+        ? `${ruleEpisodeCount} observation${ruleEpisodeCount === 1 ? "" : "s"} converged into this rule.`
+        : undefined;
+
+    const narrative: SelectedNarrative = {
+      whatHappened,
+      thePattern: patternLabel,
+      whyItMatters,
+      ruleConfidence,
+      ruleEpisodeCount,
+    };
+
+    return hasNarrativeContent(narrative) ? narrative : null;
+  }
+
+  const episodeEvent = latestMatchingEpisodeEvent(activityEvents, selectedNodeId);
+  if (!episodeEvent) {
+    return null;
+  }
+
+  const subtitlePattern = nonEmptyText(episodeEvent.subtitle);
+  const rawPattern = resolvePatternFromRaw(episodeEvent.raw);
+  const resolvedPattern = subtitlePattern ?? (rawPattern ? patternDisplayLabel(rawPattern) : undefined);
+
+  const narrative: SelectedNarrative = {
+    whatHappened: nonEmptyText(episodeEvent.whatHappened) ?? undefined,
+    thePattern: resolvedPattern,
+    theFix: nonEmptyText(episodeEvent.theFix) ?? undefined,
+    whyItMatters: nonEmptyText(episodeEvent.whyItMatters) ?? undefined,
+  };
+
+  return hasNarrativeContent(narrative) ? narrative : null;
 }
 
 function extractEventsFromBuffer(rawBuffer: string) {
@@ -972,6 +1156,25 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     return edges;
   }, [graph.edges, graph.nodes, phase, visibleConsolidationNodeIds, visibleNodeIds]);
 
+  const selectedGraphNode = useMemo(() => {
+    if (!crossSelection.selectedNodeId) {
+      return null;
+    }
+
+    return graph.nodes.find((node) => node.id === crossSelection.selectedNodeId) ?? null;
+  }, [crossSelection.selectedNodeId, graph.nodes]);
+
+  const selectedNarrative = useMemo(
+    () =>
+      resolveSelectedNarrative({
+        activityEvents,
+        selectedNodeId: crossSelection.selectedNodeId,
+        selectedNodeType: selectedGraphNode?.type ?? null,
+        selectedPatternKey: selectedGraphNode?.patternKey ?? null,
+      }),
+    [activityEvents, crossSelection.selectedNodeId, selectedGraphNode?.patternKey, selectedGraphNode?.type],
+  );
+
   const noConsolidatedRules = activeSelection && !graphLoading && graph.stats.ruleCount === 0;
 
   const handleFeedSelection = useCallback((event: ActivityEventView) => {
@@ -1073,6 +1276,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
               layoutNodes={graph.nodes}
               layoutEdges={graph.edges}
               consolidationVisuals={consolidationVisuals}
+              selectedNarrative={selectedNarrative}
               externalSelectedNodeId={crossSelection.selectedNodeId}
               onNodeSelectionCommit={handleGraphSelectionCommit}
             />
