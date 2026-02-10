@@ -196,6 +196,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     () => repoSelectorCollapsedStatusText(onboardingImport.phase, onboardingImport.activeRepo),
     [onboardingImport.phase, onboardingImport.activeRepo],
   );
+  const importStarted = PHASE_ORDER[onboardingImport.phase] >= PHASE_ORDER.importing;
+  const importComplete = onboardingImport.phase === "ready";
 
   const handleFeedSelection = useCallback((event: ActivityEventView) => {
     const graphNodeId = event.graphNodeId;
@@ -227,7 +229,8 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         disabled={onboardingImport.phase === "importing" || onboardingImport.phase === "consolidating" || onboardingImport.phase === "distributing"}
         collapsed={PHASE_ORDER[onboardingImport.phase] >= PHASE_ORDER.importing && onboardingImport.phase !== "error"}
         activeRepoName={onboardingImport.activeRepo ?? undefined}
-        collapsedStatusText={collapsedStatusText}
+        collapsedStatusText={importComplete ? undefined : collapsedStatusText}
+        importComplete={importComplete}
       />
 
       <Card className="border-zinc-800 bg-zinc-900/40">
@@ -282,28 +285,32 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
             </p>
           ) : null}
 
-          <div className="grid gap-4 xl:grid-cols-[1fr_1.6fr]">
-            <div className="max-h-[540px] overflow-hidden px-1">
-              <NarrativeFeed
-                sections={narrativeSections}
-                maxItems={20}
-                importStatusText={latestImportStatus}
-                selectedNodeId={onboardingImport.crossSelection.selectedNodeId}
-                selectionSource={onboardingImport.crossSelection.selectedNodeId ? onboardingImport.crossSelection.source : null}
-                onSelectEvent={handleFeedSelection}
-                onObservationIndexMap={setObservationIndexMap}
+          <div className="relative">
+            <div className="grid gap-4 xl:grid-cols-[1fr_1.6fr]">
+              <div className="h-full min-h-0 overflow-hidden px-1">
+                <NarrativeFeed
+                  sections={narrativeSections}
+                  maxItems={20}
+                  importStatusText={latestImportStatus}
+                  importStarted={importStarted}
+                  selectedNodeId={onboardingImport.crossSelection.selectedNodeId}
+                  selectionSource={onboardingImport.crossSelection.selectedNodeId ? onboardingImport.crossSelection.source : null}
+                  onSelectEvent={handleFeedSelection}
+                  onObservationIndexMap={setObservationIndexMap}
+                />
+              </div>
+              <BrainSceneClient
+                nodes={displayNodes}
+                edges={displayEdges}
+                layoutNodes={onboardingImport.graph.nodes}
+                layoutEdges={onboardingImport.graph.edges}
+                consolidationVisuals={consolidationVisuals}
+                selectedNarrative={selectedNarrative}
+                externalSelectedNodeId={onboardingImport.crossSelection.selectedNodeId}
+                onNodeSelectionCommit={handleGraphSelectionCommit}
               />
             </div>
-            <BrainSceneClient
-              nodes={displayNodes}
-              edges={displayEdges}
-              layoutNodes={onboardingImport.graph.nodes}
-              layoutEdges={onboardingImport.graph.edges}
-              consolidationVisuals={consolidationVisuals}
-              selectedNarrative={selectedNarrative}
-              externalSelectedNodeId={onboardingImport.crossSelection.selectedNodeId}
-              onNodeSelectionCommit={handleGraphSelectionCommit}
-            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-xl bg-gradient-to-t from-zinc-900/80 to-transparent" />
           </div>
         </CardContent>
       </Card>
