@@ -5,7 +5,10 @@ import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { Eye, Lightbulb, Sparkles } from "lucide-react";
 
 import { ActivityCard, type ActivityEventView } from "@/components/feed/ActivityCard";
+import { CollapsiblePhaseSection } from "@/components/feed/CollapsiblePhaseSection";
+import { ImportLoadingIndicator } from "@/components/feed/ImportLoadingIndicator";
 import { ObservationRow } from "@/components/feed/ObservationRow";
+import { PhaseProgressIndicator } from "@/components/feed/PhaseProgressIndicator";
 import { PRGroupCard } from "@/components/feed/PRGroupCard";
 import { RuleGroupCard } from "@/components/feed/RuleGroupCard";
 import { ThinkingDivider } from "@/components/feed/ThinkingDivider";
@@ -17,6 +20,7 @@ import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 interface NarrativeFeedProps {
   sections: NarrativeSections;
   maxItems?: number;
+  importStatusText?: string | null;
   selectedNodeId?: string | null;
   selectionSource?: SelectionSource | null;
   onSelectEvent?: (event: ActivityEventView) => void;
@@ -141,6 +145,7 @@ function SectionHeader({ icon, title }: { icon: ReactNode; title: string }) {
 export function NarrativeFeed({
   sections,
   maxItems = 12,
+  importStatusText = null,
   selectedNodeId = null,
   selectionSource = null,
   onSelectEvent,
@@ -209,6 +214,15 @@ export function NarrativeFeed({
   }, [sections.insights, sections.milestones, sections.reasoning, selectedNodeId, selectionSource, visibleObservations]);
 
   const showLearnedSection = sections.phase === "analyzing" || sections.phase === "connecting";
+  const observationSummary = useMemo(
+    () => `${visibleObservations.length} code reviews observed`,
+    [visibleObservations.length],
+  );
+  const learnedSummary = useMemo(
+    () => `${sections.insights.length} insights crystallized`,
+    [sections.insights.length],
+  );
+  const showPhaseProgress = sections.phase !== "observing" || sections.observations.length > 0;
 
   const whyItMattersRows = useMemo(() => {
     return sections.insights
@@ -239,12 +253,18 @@ export function NarrativeFeed({
   return (
     <LayoutGroup id="narrative-feed">
       <div className="max-h-[500px] space-y-3 overflow-auto pr-1">
-        <section className="space-y-2">
+        {showPhaseProgress ? <PhaseProgressIndicator phase={sections.phase} /> : null}
+        <CollapsiblePhaseSection
+          isActive={sections.phase === "observing"}
+          isComplete={sections.phase !== "observing"}
+          summary={<span>{observationSummary}</span>}
+          className="space-y-2"
+        >
           <SectionHeader icon={<Eye className="h-3.5 w-3.5" />} title="What I Observed" />
           <div className="space-y-2">
             <AnimatePresence initial={false}>
               {visibleObservations.length === 0 ? (
-                <p className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3 text-sm text-zinc-400">Reading code reviews...</p>
+                <ImportLoadingIndicator statusText={importStatusText} />
               ) : (
                 visibleObservations.map((event, index) => (
                   <motion.div
@@ -269,7 +289,7 @@ export function NarrativeFeed({
               )}
             </AnimatePresence>
           </div>
-        </section>
+        </CollapsiblePhaseSection>
 
         <AnimatePresence initial={false}>
           {sections.phase !== "observing" ? (
@@ -288,174 +308,162 @@ export function NarrativeFeed({
           ) : null}
         </AnimatePresence>
 
-        <AnimatePresence initial={false}>
-          {showLearnedSection ? (
-            <motion.section
-              key="learned-section"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.25 }}
-              className="space-y-2"
-            >
-              {sections.milestones.length > 0 ? (
-                <div className="space-y-2">
-                  {sections.milestones.map((event, index) => (
-                    <motion.div
-                      key={event.id}
-                      layout
-                      layoutId={event.id}
-                      transition={CARD_LAYOUT_TRANSITION}
+        <CollapsiblePhaseSection
+          isActive={showLearnedSection && sections.phase === "analyzing"}
+          isComplete={sections.phase === "connecting"}
+          summary={<span>{learnedSummary}</span>}
+          className="space-y-2"
+        >
+          {sections.milestones.length > 0 ? (
+            <div className="space-y-2">
+              {sections.milestones.map((event, index) => (
+                <motion.div
+                  key={event.id}
+                  layout
+                  layoutId={event.id}
+                  transition={CARD_LAYOUT_TRANSITION}
+                  ref={(element) => {
+                    eventElementMapRef.current.set(event.id, element);
+                  }}
+                  data-activity-event-id={event.id}
+                >
+                  {renderEventCard({
+                    event,
+                    index,
+                    selectedNodeId,
+                    tier: "milestone",
+                    onSelectEvent,
+                  })}
+                </motion.div>
+              ))}
+            </div>
+          ) : null}
+
+          <SectionHeader icon={<Lightbulb className="h-3.5 w-3.5" />} title="What I Learned" />
+
+          <div className="space-y-2">
+            {sections.reasoning ? (
+              <motion.div
+                key={sections.reasoning.id}
+                layout
+                layoutId={sections.reasoning.id}
+                transition={CARD_LAYOUT_TRANSITION}
+                ref={(element) => {
+                  eventElementMapRef.current.set(sections.reasoning!.id, element);
+                }}
+                data-activity-event-id={sections.reasoning.id}
+              >
+                {renderEventCard({
+                  event: sections.reasoning,
+                  index: 0,
+                  selectedNodeId,
+                  onSelectEvent,
+                })}
+              </motion.div>
+            ) : null}
+
+            {sections.insights.length > 0 ? <ThinkingDivider label="Crystallizing insights" active={false} /> : null}
+
+            {sections.insights.length === 0 ? (
+              <p className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3 text-sm text-zinc-400">
+                Run Sleep Cycle to discover patterns...
+              </p>
+            ) : (
+              sections.insights.map((group) => {
+                const groupPatternKey = normalizePatternKey(group.rulePatternKey);
+                const colorFamily = groupPatternKey
+                  ? getColorFamilyForPatternKey(groupPatternKey)
+                  : getColorFamilyForRule(group.ruleId);
+                const selectedRule = selectedNodeId === group.ruleId;
+
+                return (
+                  <div key={group.ruleId} className="space-y-2">
+                    <div
                       ref={(element) => {
-                        eventElementMapRef.current.set(event.id, element);
+                        ruleHeaderMapRef.current.set(group.ruleId, element);
                       }}
-                      data-activity-event-id={event.id}
+                      className={`rounded-sm border-l-2 bg-zinc-900/30 px-2 py-1 text-xs font-medium ${
+                        selectedRule ? "ring-1 ring-offset-0" : ""
+                      }`}
+                      style={{
+                        borderColor: colorFamily.accent,
+                        color: colorFamily.textMuted,
+                        ...(selectedRule
+                          ? {
+                              boxShadow: `inset 0 0 0 1px ${colorFamily.accent}33`,
+                            }
+                          : {}),
+                      }}
                     >
-                      {renderEventCard({
-                        event,
-                        index,
-                        selectedNodeId,
-                        tier: "milestone",
-                        onSelectEvent,
-                      })}
-                    </motion.div>
+                      {group.ruleTitle}
+                    </div>
+
+                    {group.ruleEvent ? (
+                      <motion.div
+                        key={group.ruleEvent.id}
+                        layout
+                        layoutId={group.ruleEvent.id}
+                        transition={CARD_LAYOUT_TRANSITION}
+                        ref={(element) => {
+                          eventElementMapRef.current.set(group.ruleEvent!.id, element);
+                        }}
+                        data-activity-event-id={group.ruleEvent.id}
+                      >
+                        {renderEventCard({
+                          event: group.ruleEvent,
+                          index: 0,
+                          selectedNodeId,
+                          onSelectEvent,
+                        })}
+                      </motion.div>
+                    ) : null}
+
+                    {group.episodes.map((event, index) => (
+                      <motion.div
+                        key={event.id}
+                        layout
+                        layoutId={event.id}
+                        transition={CARD_LAYOUT_TRANSITION}
+                        ref={(element) => {
+                          eventElementMapRef.current.set(event.id, element);
+                        }}
+                        data-activity-event-id={event.id}
+                      >
+                        {renderEventCard({
+                          event,
+                          index: index + 1,
+                          selectedNodeId,
+                          onSelectEvent,
+                        })}
+                      </motion.div>
+                    ))}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </CollapsiblePhaseSection>
+
+        <CollapsiblePhaseSection
+          isActive={showWhySection}
+          isComplete={false}
+          summary={<span />}
+          className="space-y-2"
+        >
+          <SectionHeader icon={<Sparkles className="h-3.5 w-3.5" />} title="Why It Matters" />
+          <div className="space-y-2">
+            {whyItMattersRows.map((row) => (
+              <article key={row.id} className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3">
+                <p className="text-sm font-medium text-zinc-100">{row.title}</p>
+                <ul className="mt-2 space-y-1 text-xs text-zinc-300">
+                  {row.summaries.map((summary) => (
+                    <li key={`${row.id}-${summary}`}>• {summary}</li>
                   ))}
-                </div>
-              ) : null}
-
-              <SectionHeader icon={<Lightbulb className="h-3.5 w-3.5" />} title="What I Learned" />
-
-              <div className="space-y-2">
-                {sections.reasoning ? (
-                  <motion.div
-                    key={sections.reasoning.id}
-                    layout
-                    layoutId={sections.reasoning.id}
-                    transition={CARD_LAYOUT_TRANSITION}
-                    ref={(element) => {
-                      eventElementMapRef.current.set(sections.reasoning!.id, element);
-                    }}
-                    data-activity-event-id={sections.reasoning.id}
-                  >
-                    {renderEventCard({
-                      event: sections.reasoning,
-                      index: 0,
-                      selectedNodeId,
-                      onSelectEvent,
-                    })}
-                  </motion.div>
-                ) : null}
-
-                {sections.insights.length > 0 ? <ThinkingDivider label="Crystallizing insights" active={false} /> : null}
-
-                {sections.insights.length === 0 ? (
-                  <p className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3 text-sm text-zinc-400">
-                    Run Sleep Cycle to discover patterns...
-                  </p>
-                ) : (
-                  sections.insights.map((group) => {
-                    const groupPatternKey = normalizePatternKey(group.rulePatternKey);
-                    const colorFamily = groupPatternKey
-                      ? getColorFamilyForPatternKey(groupPatternKey)
-                      : getColorFamilyForRule(group.ruleId);
-                    const selectedRule = selectedNodeId === group.ruleId;
-
-                    return (
-                      <div key={group.ruleId} className="space-y-2">
-                        <div
-                          ref={(element) => {
-                            ruleHeaderMapRef.current.set(group.ruleId, element);
-                          }}
-                          className={`rounded-sm border-l-2 bg-zinc-900/30 px-2 py-1 text-xs font-medium ${
-                            selectedRule ? "ring-1 ring-offset-0" : ""
-                          }`}
-                          style={{
-                            borderColor: colorFamily.accent,
-                            color: colorFamily.textMuted,
-                            ...(selectedRule
-                              ? {
-                                  boxShadow: `inset 0 0 0 1px ${colorFamily.accent}33`,
-                                }
-                              : {}),
-                          }}
-                        >
-                          {group.ruleTitle}
-                        </div>
-
-                        {group.ruleEvent ? (
-                          <motion.div
-                            key={group.ruleEvent.id}
-                            layout
-                            layoutId={group.ruleEvent.id}
-                            transition={CARD_LAYOUT_TRANSITION}
-                            ref={(element) => {
-                              eventElementMapRef.current.set(group.ruleEvent!.id, element);
-                            }}
-                            data-activity-event-id={group.ruleEvent.id}
-                          >
-                            {renderEventCard({
-                              event: group.ruleEvent,
-                              index: 0,
-                              selectedNodeId,
-                              onSelectEvent,
-                            })}
-                          </motion.div>
-                        ) : null}
-
-                        {group.episodes.map((event, index) => (
-                          <motion.div
-                            key={event.id}
-                            layout
-                            layoutId={event.id}
-                            transition={CARD_LAYOUT_TRANSITION}
-                            ref={(element) => {
-                              eventElementMapRef.current.set(event.id, element);
-                            }}
-                            data-activity-event-id={event.id}
-                          >
-                            {renderEventCard({
-                              event,
-                              index: index + 1,
-                              selectedNodeId,
-                              onSelectEvent,
-                            })}
-                          </motion.div>
-                        ))}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </motion.section>
-          ) : null}
-        </AnimatePresence>
-
-        <AnimatePresence initial={false}>
-          {showWhySection ? (
-            <motion.section
-              key="why-section"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.25 }}
-              className="space-y-2"
-            >
-              <SectionHeader icon={<Sparkles className="h-3.5 w-3.5" />} title="Why It Matters" />
-              <div className="space-y-2">
-                {whyItMattersRows.map((row) => (
-                  <article key={row.id} className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3">
-                    <p className="text-sm font-medium text-zinc-100">{row.title}</p>
-                    <ul className="mt-2 space-y-1 text-xs text-zinc-300">
-                      {row.summaries.map((summary) => (
-                        <li key={`${row.id}-${summary}`}>• {summary}</li>
-                      ))}
-                    </ul>
-                  </article>
-                ))}
-              </div>
-            </motion.section>
-          ) : null}
-        </AnimatePresence>
+                </ul>
+              </article>
+            ))}
+          </div>
+        </CollapsiblePhaseSection>
       </div>
     </LayoutGroup>
   );
