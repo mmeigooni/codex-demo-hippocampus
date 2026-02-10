@@ -13,6 +13,13 @@ import { NodeInteraction } from "@/components/brain/NodeInteraction";
 import { ParticleField } from "@/components/brain/ParticleField";
 import type { ConsolidationVisualState } from "@/components/brain/consolidation-visual-types";
 import type { BrainEdgeModel, BrainNodeModel, PositionedBrainNode } from "@/components/brain/types";
+import { CLUSTER_PALETTE } from "@/lib/color/cluster-palette";
+import {
+  getSuperCategoryForPattern,
+  type PatternKey,
+  SUPER_CATEGORY_LABELS,
+  type SuperCategory,
+} from "@/lib/memory/pattern-taxonomy";
 
 interface SelectedNarrative {
   whatHappened?: string;
@@ -44,6 +51,13 @@ interface AtmosphereControllerProps {
 interface AnimatedBloomEffectProps {
   targetIntensity: number;
 }
+
+const SUPER_CATEGORY_COLOR_INDEX: Record<SuperCategory, number> = {
+  safety: 0,
+  resilience: 1,
+  security: 2,
+  flow: 3,
+};
 
 function AnimatedBloomEffect({ targetIntensity }: AnimatedBloomEffectProps) {
   const bloomEffect = useMemo(
@@ -88,6 +102,46 @@ function AtmosphereController({ isConsolidating, ambientRef }: AtmosphereControl
   });
 
   return null;
+}
+
+function GraphLegend({ nodes }: { nodes: BrainNodeModel[] }) {
+  const visibleCategories = useMemo(() => {
+    const seen = new Set<SuperCategory>();
+    const result: SuperCategory[] = [];
+
+    for (const node of nodes) {
+      const category = getSuperCategoryForPattern(node.patternKey as PatternKey);
+      if (seen.has(category)) {
+        continue;
+      }
+
+      seen.add(category);
+      result.push(category);
+    }
+
+    return result;
+  }, [nodes]);
+
+  if (visibleCategories.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col gap-1.5">
+      {visibleCategories.map((category) => {
+        const colorIndex = SUPER_CATEGORY_COLOR_INDEX[category];
+        const color = CLUSTER_PALETTE[colorIndex]?.border ?? CLUSTER_PALETTE[0]!.border;
+        const label = SUPER_CATEGORY_LABELS[category];
+
+        return (
+          <div key={category} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+            <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function BrainScene({
@@ -142,7 +196,7 @@ export function BrainScene({
   return (
     <div className="space-y-3">
       <div
-        className="h-[440px] overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(circle_at_top,_#042f2e_0%,_#020617_65%)]"
+        className="relative h-[440px] overflow-hidden rounded-xl border border-zinc-800 bg-[radial-gradient(circle_at_top,_#042f2e_0%,_#020617_65%)]"
         onPointerEnter={handleCanvasPointerEnter}
         onPointerLeave={handleCanvasPointerLeave}
       >
@@ -193,6 +247,7 @@ export function BrainScene({
             No nodes yet. Import episodes to activate the memory graph.
           </div>
         )}
+        {hasGraphData ? <GraphLegend nodes={nodes} /> : null}
       </div>
 
       <NodeInteraction node={selectedNode} narrative={selectedNarrative ?? null} />
