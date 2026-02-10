@@ -46,15 +46,6 @@ function isFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function resolveConfidencePercent(confidence: number | undefined) {
-  if (!isFiniteNumber(confidence)) {
-    return null;
-  }
-
-  const clamped = Math.max(0, Math.min(1, confidence));
-  return Math.round(clamped * 100);
-}
-
 function resolveObservationCount(count: number | undefined) {
   if (!isFiniteNumber(count)) {
     return null;
@@ -96,25 +87,6 @@ function resolveNarrativeSections(narrative: SelectedNarrative | null | undefine
   });
 }
 
-function RuleConfidence({ confidencePercent }: { confidencePercent: number }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="text-zinc-500">Pattern strength</span>
-        <span className="text-zinc-300">{confidencePercent}%</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80">
-        <motion.div
-          className="h-full rounded-full bg-cyan-400/85"
-          initial={{ width: 0 }}
-          animate={{ width: `${confidencePercent}%` }}
-          transition={{ duration: 0.45, ease: "easeOut" }}
-        />
-      </div>
-    </div>
-  );
-}
-
 function RuleSummary({
   node,
   narrative,
@@ -123,7 +95,6 @@ function RuleSummary({
   narrative: SelectedNarrative | null | undefined;
 }) {
   const triggerCount = node.triggers.length;
-  const confidencePercent = resolveConfidencePercent(narrative?.ruleConfidence);
   const observationCount = resolveObservationCount(narrative?.ruleEpisodeCount);
   const patternLabel = normalizeText(narrative?.thePattern) ?? patternDisplayLabel(node.patternKey);
   const explanation = normalizeText(narrative?.whyItMatters);
@@ -140,7 +111,6 @@ function RuleSummary({
           Based on {observationCount} observation{observationCount === 1 ? "" : "s"}
         </p>
       ) : null}
-      {confidencePercent !== null ? <RuleConfidence confidencePercent={confidencePercent} /> : null}
       <div className="space-y-1">
         <p className="text-xs text-zinc-500">Triggers</p>
         {triggerCount > 0 ? (

@@ -14,6 +14,7 @@ interface RepoSelectorProps {
   disabled?: boolean;
   collapsed?: boolean;
   activeRepoName?: string;
+  collapsedStatusText?: string;
 }
 
 function parseFullName(fullName: string) {
@@ -32,6 +33,7 @@ export function RepoSelector({
   disabled = false,
   collapsed = false,
   activeRepoName,
+  collapsedStatusText,
 }: RepoSelectorProps) {
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [hasLoadedRepos, setHasLoadedRepos] = useState(false);
@@ -114,7 +116,7 @@ export function RepoSelector({
               animate={{ opacity: [0.35, 1, 0.35] }}
               transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
             />
-            <span>Importing {activeRepoName ?? "repository"}...</span>
+            <span>{collapsedStatusText ?? `Importing ${activeRepoName ?? "repository"}...`}</span>
           </div>
           <ChevronDown
             className={`h-4 w-4 text-zinc-400 transition-transform ${userExpanded ? "rotate-180" : ""}`}
