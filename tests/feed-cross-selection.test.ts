@@ -64,12 +64,12 @@ describe("cross selection helpers", () => {
     const result = buildFeedRenderWindow({
       events,
       maxItems: 2,
-      selectedNodeId: "episode-1",
+      selectedNodeId: "episode-4",
       source: "graph",
     });
 
-    expect(result.pinnedEventId).toBe("evt-1");
-    expect(result.events[0]?.id).toBe("evt-1");
+    expect(result.pinnedEventId).toBe("evt-4");
+    expect(result.events[0]?.id).toBe("evt-4");
     expect(result.events).toHaveLength(2);
   });
 
@@ -88,14 +88,14 @@ describe("cross selection helpers", () => {
     });
 
     expect(result.pinnedEventId).toBeNull();
-    expect(result.events.map((event) => event.id)).toEqual(["evt-3", "evt-2"]);
+    expect(result.events.map((event) => event.id)).toEqual(["evt-1", "evt-2"]);
   });
 
   it("pins grouped events when selected node is inside graphNodeIds", () => {
     const events = [
       { id: "evt-1", graphNodeId: "episode-1" },
-      { id: "evt-2", graphNodeIds: ["episode-2", "episode-3"] },
       { id: "evt-3", graphNodeId: "episode-4" },
+      { id: "evt-2", graphNodeIds: ["episode-2", "episode-3"] },
       { id: "evt-4", graphNodeId: "episode-5" },
     ];
 
