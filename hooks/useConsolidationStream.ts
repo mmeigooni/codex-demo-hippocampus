@@ -5,8 +5,17 @@ import { useCallback, useEffect, useState } from "react";
 import { useTheatricalScheduler } from "@/hooks/useTheatricalScheduler";
 import type { ConsolidationEvent, ConsolidationEventType } from "@/lib/codex/types";
 import type { ConsolidationModelOutput } from "@/lib/codex/types";
-import type { DreamPhase } from "@/components/sleep-cycle/DreamState";
 import { parseJsonSseBuffer } from "@/lib/sse/parse";
+
+export type DreamPhase =
+  | "idle"
+  | "dozing"
+  | "reasoning"
+  | "patterning"
+  | "promoting"
+  | "integrating"
+  | "complete"
+  | "error";
 
 export interface ConsolidationSummary {
   counts?: {
