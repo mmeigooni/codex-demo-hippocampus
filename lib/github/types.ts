@@ -58,6 +58,7 @@ export type ImportEventType =
   | "pr_found"
   | "replay_manifest"
   | "encoding_start"
+  | "snippets_extracted"
   | "episode_created"
   | "episode_skipped"
   | "encoding_error"
@@ -70,6 +71,8 @@ export interface ImportEpisodeSummary {
   salience_score: number;
   pattern_key: PatternKey;
   the_pattern: string;
+  what_happened?: string;
+  the_fix?: string;
   why_it_matters?: string;
   triggers: string[];
 }
