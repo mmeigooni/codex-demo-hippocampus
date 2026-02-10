@@ -19,6 +19,8 @@ export interface ActivityEventView {
   salience?: number;
   triggers?: string[];
   whyItMatters?: string;
+  whatHappened?: string;
+  theFix?: string;
   snippet?: string;
   groupedEpisodes?: ActivityEventView[];
   variant?: "import" | "reasoning" | "consolidation" | "distribution";

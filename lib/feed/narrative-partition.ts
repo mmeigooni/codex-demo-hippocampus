@@ -22,6 +22,7 @@ const HIDDEN_EVENT_TYPES = new Set([
   "consolidation_complete",
   "consolidation_error",
   "encoding_start",
+  "snippets_extracted",
   "episode_skipped",
   "encoding_error",
   "salience_updated",

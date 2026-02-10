@@ -14,6 +14,7 @@ const ALWAYS_UNASSOCIATED_TYPES = new Set([
   "import_bootstrap",
   "pr_found",
   "encoding_start",
+  "snippets_extracted",
   "episode_skipped",
   "encoding_error",
   "complete",

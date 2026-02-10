@@ -15,6 +15,8 @@ describe("toImportActivityEvent", () => {
           salience_score: 8,
           the_pattern: "sensitive-logging",
           triggers: ["timeout"],
+          what_happened: "Error paths skipped retry backoff",
+          the_fix: "Centralized retry policy and guardrails",
           why_it_matters: "Prevents user-visible failures",
         },
       },
@@ -23,6 +25,8 @@ describe("toImportActivityEvent", () => {
     const activity = toImportActivityEvent(event, 0);
 
     expect(activity?.type).toBe("episode_created");
+    expect(activity?.whatHappened).toBe("Error paths skipped retry backoff");
+    expect(activity?.theFix).toBe("Centralized retry policy and guardrails");
     expect(activity?.whyItMatters).toBe("Prevents user-visible failures");
     expect(activity?.subtitle).toBe("Sensitive logging");
     expect(activity?.graphNodeId).toBe("episode-ep-44");
@@ -66,6 +70,25 @@ describe("toImportActivityEvent", () => {
 
     const activity = toImportActivityEvent(event, 3);
     expect(activity?.subtitle).toBe("Custom Risk Pattern");
+  });
+
+  it("maps snippets_extracted to explicit import progress activity", () => {
+    const event: ImportEvent = {
+      type: "snippets_extracted",
+      data: {
+        pr_number: 12,
+        snippet_count: 7,
+        file_count: 3,
+        search_rule_count: 2,
+      },
+    };
+
+    const activity = toImportActivityEvent(event, 5);
+
+    expect(activity?.type).toBe("snippets_extracted");
+    expect(activity?.title).toBe("Extracted 7 snippets from 3 files");
+    expect(activity?.subtitle).toBe("2 search rules applied");
+    expect(activity?.variant).toBe("import");
   });
 
   it("drops replay manifests from activity feed", () => {
