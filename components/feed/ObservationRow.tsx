@@ -12,6 +12,7 @@ import { EVENT_TYPE_LABELS } from "@/lib/feed/narrative-partition";
 interface ObservationRowProps {
   event: ActivityEventView;
   index: number;
+  observationIndex?: number;
   selected?: boolean;
   pinnedFromGraph?: boolean;
   onSelect?: (event: ActivityEventView) => void;
@@ -20,6 +21,7 @@ interface ObservationRowProps {
 export function ObservationRow({
   event,
   index,
+  observationIndex,
   selected = false,
   pinnedFromGraph = false,
   onSelect,
@@ -84,6 +86,9 @@ export function ObservationRow({
       aria-pressed={selectable ? selected : undefined}
     >
       {clusterColor ? <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: clusterColor.accent }} /> : null}
+      {typeof observationIndex === "number" ? (
+        <span className="font-mono text-[10px] text-zinc-500">#{observationIndex}</span>
+      ) : null}
       <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
         {EVENT_TYPE_LABELS[event.type] ?? event.type}
       </span>
