@@ -226,6 +226,20 @@ export function BrainGraph({
   const selectedNode = positionedNodes.find((node) => node.id === effectiveSelectedId) ?? null;
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
+  useEffect(() => {
+    if (!onSelectedNodeChange) {
+      return;
+    }
+
+    if (externalSelectedNodeId === null || externalSelectedNodeId === undefined) {
+      onSelectedNodeChange(null);
+      return;
+    }
+
+    const matchedNode = positionedNodes.find((node) => node.id === externalSelectedNodeId) ?? null;
+    onSelectedNodeChange(matchedNode);
+  }, [externalSelectedNodeId, onSelectedNodeChange, positionedNodes]);
+
   const handleActivateNode = useCallback((nodeId: string, mode: "pulse" | "flash-warn" | "salience-shift") => {
     setActivatedNodeMap((current) => {
       const next = new Map(current);
