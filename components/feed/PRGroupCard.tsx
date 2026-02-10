@@ -80,7 +80,13 @@ export function PRGroupCard({
 
   useEffect(() => {
     if (hasSelectedEpisode) {
-      setExpanded(true);
+      const expandTimer = setTimeout(() => {
+        setExpanded(true);
+      }, 0);
+
+      return () => {
+        clearTimeout(expandTimer);
+      };
     }
   }, [hasSelectedEpisode]);
 

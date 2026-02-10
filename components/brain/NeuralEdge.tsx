@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Line } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { MathUtils } from "three";
@@ -55,14 +55,6 @@ export function NeuralEdge({
       Math.abs(previous - nextLineWidth) < 0.001 ? previous : nextLineWidth,
     );
   });
-
-  useEffect(() => {
-    if (spawnProgressRef.current >= 1 && spawnGlowRef.current <= 0) {
-      const targetHighlight = highlighted ? 1 : 0;
-      setCurrentOpacity(baseOpacity + targetHighlight * 0.2);
-      setCurrentLineWidth(baseLineWidth + targetHighlight * 1.5);
-    }
-  }, [baseLineWidth, baseOpacity, highlighted]);
 
   return (
     <Line

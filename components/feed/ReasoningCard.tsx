@@ -29,7 +29,13 @@ export function ReasoningCard({ text, isActive, eventId, index }: ReasoningCardP
 
   useEffect(() => {
     if (isActive) {
-      setExpanded(false);
+      const collapseTimer = setTimeout(() => {
+        setExpanded(false);
+      }, 0);
+
+      return () => {
+        clearTimeout(collapseTimer);
+      };
     }
   }, [isActive]);
 
