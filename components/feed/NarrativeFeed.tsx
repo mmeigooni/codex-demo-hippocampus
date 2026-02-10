@@ -74,8 +74,8 @@ function SectionHeader({ icon, title }: { icon: ReactNode; title: string }) {
   );
 }
 
-function insightTitle(ruleTitle: string, episodeCount: number): string {
-  return `${ruleTitle} (${episodeCount} observation${episodeCount === 1 ? "" : "s"})`;
+function insightTitle(ruleTitle: string): string {
+  return ruleTitle;
 }
 
 export function NarrativeFeed({
@@ -104,7 +104,7 @@ export function NarrativeFeed({
   const insightRows = useMemo<InsightRow[]>(() => {
     return sections.insights.map((group) => {
       const episodeCount = group.episodes.length;
-      const title = insightTitle(group.ruleTitle, episodeCount);
+      const title = insightTitle(group.ruleTitle);
 
       if (group.ruleEvent) {
         return {
@@ -153,32 +153,6 @@ export function NarrativeFeed({
 
     return map;
   }, [sections.observations]);
-
-  const whyItMattersRows = useMemo(() => {
-    return sections.insights
-      .map((group) => {
-        const summaries = Array.from(
-          new Set(
-            group.episodes
-              .map((episode) => (typeof episode.whyItMatters === "string" ? episode.whyItMatters.trim() : ""))
-              .filter((entry) => entry.length > 0),
-          ),
-        );
-
-        if (summaries.length === 0) {
-          return null;
-        }
-
-        return {
-          id: group.ruleId,
-          title: group.ruleTitle,
-          summaries,
-        };
-      })
-      .filter((entry): entry is { id: string; title: string; summaries: string[] } => entry !== null);
-  }, [sections.insights]);
-
-  const showWhySection = sections.phase === "connecting" && whyItMattersRows.length > 0;
 
   const isInsightSelected = (row: InsightRow): boolean => {
     if (!selectedNodeId) {
@@ -248,7 +222,7 @@ export function NarrativeFeed({
     [sections.milestones.length],
   );
   const insightsSummary = useMemo(
-    () => `${sections.insights.length} insights crystallized`,
+    () => `${sections.insights.length} insights determined`,
     [sections.insights.length],
   );
   const showPhaseProgress = sections.phase !== "observing" || sections.observations.length > 0;
@@ -258,7 +232,7 @@ export function NarrativeFeed({
     <LayoutGroup id="narrative-feed">
       <div className="h-full min-h-0 space-y-3 overflow-auto pr-1">
         {showPhaseProgress && shouldShowObservingSection ? (
-          <PhaseProgressIndicator phase={sections.phase} complete={showWhySection} />
+          <PhaseProgressIndicator phase={sections.phase} complete={insightRows.length > 0} />
         ) : null}
 
         {shouldShowObservingSection ? (
@@ -366,8 +340,8 @@ export function NarrativeFeed({
         </CollapsiblePhaseSection>
 
         <CollapsiblePhaseSection
-          isActive={sections.phase === "connecting"}
-          isComplete={false}
+          isActive={sections.phase === "connecting" && insightRows.length === 0}
+          isComplete={insightRows.length > 0}
           summary={<span>{insightsSummary}</span>}
           label="Insights"
           className="space-y-2"
@@ -399,17 +373,6 @@ export function NarrativeFeed({
                 </motion.div>
               ))
             )}
-
-            {whyItMattersRows.map((row) => (
-              <article key={row.id} className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3">
-                <p className="text-sm font-medium text-zinc-100">{row.title}</p>
-                <ul className="mt-2 space-y-1 text-xs text-zinc-300">
-                  {row.summaries.map((summary) => (
-                    <li key={`${row.id}-${summary}`}>• {summary}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
           </div>
         </CollapsiblePhaseSection>
       </div>
