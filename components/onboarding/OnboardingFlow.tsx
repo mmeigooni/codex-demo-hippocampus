@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { BrainSceneClient } from "@/components/brain/BrainSceneClient";
 import type { PositionedBrainNode } from "@/components/brain/types";
@@ -31,6 +31,7 @@ interface OnboardingFlowProps {
 
 export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
   const onboardingImport = useOnboardingImport();
+  const [observationIndexMap, setObservationIndexMap] = useState<Map<string, number>>(new Map());
 
   const {
     consolidationVisuals,
@@ -177,8 +178,17 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
         selectedNodeId: onboardingImport.crossSelection.selectedNodeId,
         selectedNodeType: selectedGraphNode?.type ?? null,
         selectedPatternKey: selectedGraphNode?.patternKey ?? null,
+        insightGroups: narrativeSections.insights,
+        observationIndexMap,
       }),
-    [activityEvents, onboardingImport.crossSelection.selectedNodeId, selectedGraphNode?.patternKey, selectedGraphNode?.type],
+    [
+      activityEvents,
+      narrativeSections.insights,
+      observationIndexMap,
+      onboardingImport.crossSelection.selectedNodeId,
+      selectedGraphNode?.patternKey,
+      selectedGraphNode?.type,
+    ],
   );
 
   const noConsolidatedRules = onboardingImport.activeSelection && !onboardingImport.graphLoading && onboardingImport.graph.stats.ruleCount === 0;
@@ -281,6 +291,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
                 selectedNodeId={onboardingImport.crossSelection.selectedNodeId}
                 selectionSource={onboardingImport.crossSelection.selectedNodeId ? onboardingImport.crossSelection.source : null}
                 onSelectEvent={handleFeedSelection}
+                onObservationIndexMap={setObservationIndexMap}
               />
             </div>
             <BrainSceneClient
