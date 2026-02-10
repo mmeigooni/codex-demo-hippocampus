@@ -340,7 +340,7 @@ export function NarrativeFeed({
         </CollapsiblePhaseSection>
 
         <CollapsiblePhaseSection
-          isActive={sections.phase === "connecting" && insightRows.length === 0}
+          isActive={sections.phase === "connecting"}
           isComplete={insightRows.length > 0}
           summary={<span>{insightsSummary}</span>}
           label="Insights"
