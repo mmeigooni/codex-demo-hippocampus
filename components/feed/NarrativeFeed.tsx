@@ -8,6 +8,7 @@ import { ActivityCard, type ActivityEventView } from "@/components/feed/Activity
 import { CollapsiblePhaseSection } from "@/components/feed/CollapsiblePhaseSection";
 import { ImportLoadingIndicator } from "@/components/feed/ImportLoadingIndicator";
 import { ObservationRow } from "@/components/feed/ObservationRow";
+import { PatternRow } from "@/components/feed/PatternRow";
 import { PhaseProgressIndicator } from "@/components/feed/PhaseProgressIndicator";
 import type { AssociatedRuleGroup } from "@/lib/feed/association-state";
 import type { NarrativeSections } from "@/lib/feed/narrative-partition";
@@ -20,6 +21,7 @@ interface NarrativeFeedProps {
   selectedNodeId?: string | null;
   selectionSource?: SelectionSource | null;
   onSelectEvent?: (event: ActivityEventView) => void;
+  onObservationIndexMap?: (map: Map<string, number>) => void;
 }
 
 interface InsightRow {
@@ -82,6 +84,7 @@ export function NarrativeFeed({
   selectedNodeId = null,
   selectionSource = null,
   onSelectEvent,
+  onObservationIndexMap,
 }: NarrativeFeedProps) {
   const eventElementMapRef = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
@@ -132,6 +135,23 @@ export function NarrativeFeed({
     });
   }, [sections.insights]);
 
+  const observationIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    let observationIndex = 1;
+
+    for (const event of sections.observations) {
+      const graphNodeId = event.graphNodeId;
+      if (typeof graphNodeId !== "string" || graphNodeId.length === 0 || map.has(graphNodeId)) {
+        continue;
+      }
+
+      map.set(graphNodeId, observationIndex);
+      observationIndex += 1;
+    }
+
+    return map;
+  }, [sections.observations]);
+
   const whyItMattersRows = useMemo(() => {
     return sections.insights
       .map((group) => {
@@ -173,6 +193,10 @@ export function NarrativeFeed({
 
     return row.group.episodes.some((episode) => activityEventMatchesNodeId(episode, selectedNodeId));
   };
+
+  useEffect(() => {
+    onObservationIndexMap?.(observationIndexMap);
+  }, [observationIndexMap, onObservationIndexMap]);
 
   useEffect(() => {
     if (!selectedNodeId || selectionSource !== "graph") {
@@ -259,6 +283,11 @@ export function NarrativeFeed({
                     <ObservationRow
                       event={event}
                       index={index}
+                      observationIndex={
+                        typeof event.graphNodeId === "string"
+                          ? observationIndexMap.get(event.graphNodeId)
+                          : undefined
+                      }
                       selected={activityEventMatchesNodeId(event, selectedNodeId)}
                       pinnedFromGraph={pinnedEventId === event.id}
                       onSelect={onSelectEvent}
@@ -316,8 +345,9 @@ export function NarrativeFeed({
                   }}
                   data-activity-event-id={event.id}
                 >
-                  <ObservationRow
+                  <PatternRow
                     event={event}
+                    observationIndexMap={observationIndexMap}
                     index={index}
                     selected={activityEventMatchesNodeId(event, selectedNodeId)}
                     onSelect={onSelectEvent}
