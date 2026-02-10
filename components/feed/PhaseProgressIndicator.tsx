@@ -7,6 +7,7 @@ import type { NarrativePhase } from "@/lib/feed/narrative-partition";
 
 interface PhaseProgressIndicatorProps {
   phase: NarrativePhase;
+  complete?: boolean;
 }
 
 const STEPS = [
@@ -21,14 +22,14 @@ const PHASE_INDEX: Record<(typeof STEPS)[number]["key"], number> = {
   connecting: 2,
 };
 
-export function PhaseProgressIndicator({ phase }: PhaseProgressIndicatorProps) {
+export function PhaseProgressIndicator({ phase, complete = false }: PhaseProgressIndicatorProps) {
   const currentIndex = PHASE_INDEX[phase];
 
   return (
     <div className="flex h-7 items-center gap-2">
       {STEPS.map((step, index) => {
-        const isCompleted = index < currentIndex;
-        const isActive = index === currentIndex;
+        const isCompleted = index < currentIndex || (complete && step.key === "connecting");
+        const isActive = index === currentIndex && !isCompleted;
 
         return (
           <div key={step.key} className="flex items-center gap-2">
