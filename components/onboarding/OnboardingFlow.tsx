@@ -271,7 +271,7 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
             <div className="max-h-[540px] overflow-hidden px-1">
               <NarrativeFeed
                 sections={narrativeSections}
-                maxItems={14}
+                maxItems={20}
                 importStatusText={latestImportStatus}
                 selectedNodeId={onboardingImport.crossSelection.selectedNodeId}
                 selectionSource={onboardingImport.crossSelection.selectedNodeId ? onboardingImport.crossSelection.source : null}
