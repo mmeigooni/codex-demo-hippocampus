@@ -127,7 +127,7 @@ async function listSupabaseEpisodeSummariesForPrNumbers(
 ) {
   const { data, error } = await supabase
     .from("episodes")
-    .select("id,title,source_pr_number,salience_score,pattern_key,the_pattern,why_it_matters,triggers")
+    .select("id,title,source_pr_number,salience_score,pattern_key,the_pattern,what_happened,the_fix,why_it_matters,triggers")
     .eq("repo_id", repoId)
     .in("source_pr_number", prNumbers)
     .order("updated_at", { ascending: false });
@@ -154,6 +154,8 @@ async function listSupabaseEpisodeSummariesForPrNumbers(
       salience_score: Number(row.salience_score ?? 0),
       pattern_key: String(row.pattern_key ?? ""),
       the_pattern: String(row.the_pattern ?? ""),
+      what_happened: typeof row.what_happened === "string" ? row.what_happened : undefined,
+      the_fix: typeof row.the_fix === "string" ? row.the_fix : undefined,
       why_it_matters: typeof row.why_it_matters === "string" ? row.why_it_matters : undefined,
       triggers: normalizeTriggers(row.triggers),
     } as ImportEpisodeSummary);
@@ -181,6 +183,8 @@ function listRuntimeEpisodeSummariesByPrNumber(repoId: string) {
       salience_score: Number(episode.salience_score ?? 0),
       pattern_key: episode.pattern_key,
       the_pattern: episode.the_pattern,
+      what_happened: episode.what_happened,
+      the_fix: episode.the_fix,
       why_it_matters: episode.why_it_matters,
       triggers: normalizeTriggers(episode.triggers),
     });
@@ -537,6 +541,16 @@ export async function POST(request: Request) {
             );
 
             const snippets = executeSearch(diff, searchRules.search_rules);
+            const uniqueFileCount = new Set(snippets.map((snippet) => snippet.filePath)).size;
+            emit({
+              type: "snippets_extracted",
+              data: {
+                pr_number: pr.number,
+                snippet_count: snippets.length,
+                file_count: uniqueFileCount,
+                search_rule_count: searchRules.search_rules.length,
+              },
+            });
             const reduction = summarizeTokenReduction(diff, snippets);
 
             const encoded = await encodeEpisode({
@@ -556,7 +570,7 @@ export async function POST(request: Request) {
                         repo_id: repoRecordId,
                         ...encoded.episode,
                       })
-                      .select("id,title,source_pr_number,salience_score,pattern_key,the_pattern,why_it_matters,triggers")
+                      .select("id,title,source_pr_number,salience_score,pattern_key,the_pattern,what_happened,the_fix,why_it_matters,triggers")
                       .single();
 
                     if (insertError) {
@@ -578,6 +592,8 @@ export async function POST(request: Request) {
                       salience_score: episode.salience_score,
                       pattern_key: episode.pattern_key,
                       the_pattern: episode.the_pattern,
+                      what_happened: episode.what_happened,
+                      the_fix: episode.the_fix,
                       why_it_matters: episode.why_it_matters,
                       triggers: episode.triggers,
                     } satisfies ImportEpisodeSummary;

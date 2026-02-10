@@ -158,16 +158,28 @@ beforeEach(() => {
     reviewCount: 0,
     snippetCount: 0,
   });
-  mockInsertEpisodeForRepo.mockImplementation((_repoId: string, payload: { source_pr_number: number; title: string }) => ({
-    id: `episode-${payload.source_pr_number}`,
-    title: payload.title,
-    source_pr_number: payload.source_pr_number,
-    salience_score: 5,
-    pattern_key: "review-hygiene",
-    the_pattern: "pattern",
-    why_it_matters: "matters",
-    triggers: ["tests"],
-  }));
+  mockInsertEpisodeForRepo.mockImplementation(
+    (
+      _repoId: string,
+      payload: {
+        source_pr_number: number;
+        title: string;
+        what_happened?: string;
+        the_fix?: string;
+      },
+    ) => ({
+      id: `episode-${payload.source_pr_number}`,
+      title: payload.title,
+      source_pr_number: payload.source_pr_number,
+      salience_score: 5,
+      pattern_key: "review-hygiene",
+      the_pattern: "pattern",
+      what_happened: payload.what_happened,
+      the_fix: payload.the_fix,
+      why_it_matters: "matters",
+      triggers: ["tests"],
+    }),
+  );
 });
 
 afterAll(() => {
@@ -363,11 +375,26 @@ describe("POST /api/github/import replay detection", () => {
     const types = events.map((event) => event.type);
 
     expect(types).not.toContain("replay_manifest");
+    expect(types).toContain("snippets_extracted");
     expect(types).toContain("episode_created");
+    const encodingStartIndex = types.indexOf("encoding_start");
+    const snippetsExtractedIndex = types.indexOf("snippets_extracted");
+    const episodeCreatedIndex = types.indexOf("episode_created");
+    expect(encodingStartIndex).toBeGreaterThanOrEqual(0);
+    expect(snippetsExtractedIndex).toBeGreaterThan(encodingStartIndex);
+    expect(episodeCreatedIndex).toBeGreaterThan(snippetsExtractedIndex);
+    expect(events.find((event) => event.type === "snippets_extracted")?.data).toMatchObject({
+      pr_number: 101,
+      snippet_count: expect.any(Number),
+      file_count: expect.any(Number),
+      search_rule_count: expect.any(Number),
+    });
     expect(mockEncodeEpisode).toHaveBeenCalled();
     expect(events.find((event) => event.type === "episode_created")?.data).toMatchObject({
       pr_number: 101,
       episode: {
+        what_happened: "something",
+        the_fix: "fix",
         why_it_matters: "matters",
       },
     });
