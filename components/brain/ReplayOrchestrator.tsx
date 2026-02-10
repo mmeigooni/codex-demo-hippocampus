@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SynapticImpulse } from "@/components/brain/SynapticImpulse";
 import type { ConsolidationVisualCommand } from "@/components/brain/consolidation-visual-types";
@@ -38,9 +38,44 @@ export function ReplayOrchestrator({
   onClearEffects,
   getEdgeColor = defaultEdgeColor,
 }: ReplayOrchestratorProps) {
-  const [impulses, setImpulses] = useState<ImpulseInstance[]>([]);
+  const impulsesRef = useRef<ImpulseInstance[]>([]);
+  const [renderImpulses, setRenderImpulses] = useState<ImpulseInstance[]>([]);
   const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const impulseCounterRef = useRef(0);
+
+  const syncImpulsesForRender = useCallback(() => {
+    setRenderImpulses(impulsesRef.current.slice());
+  }, []);
+
+  const clearImpulses = useCallback(() => {
+    if (impulsesRef.current.length === 0) {
+      return;
+    }
+
+    impulsesRef.current.length = 0;
+    syncImpulsesForRender();
+  }, [syncImpulsesForRender]);
+
+  const addImpulse = useCallback(
+    (impulse: ImpulseInstance) => {
+      impulsesRef.current.push(impulse);
+      syncImpulsesForRender();
+    },
+    [syncImpulsesForRender],
+  );
+
+  const removeImpulseByKey = useCallback(
+    (impulseKey: string) => {
+      const index = impulsesRef.current.findIndex((entry) => entry.key === impulseKey);
+      if (index < 0) {
+        return;
+      }
+
+      impulsesRef.current.splice(index, 1);
+      syncImpulsesForRender();
+    },
+    [syncImpulsesForRender],
+  );
 
   useEffect(() => {
     return () => {
@@ -48,8 +83,9 @@ export function ReplayOrchestrator({
         clearTimeout(timer);
       }
       timersRef.current = [];
+      clearImpulses();
     };
-  }, []);
+  }, [clearImpulses]);
 
   useEffect(() => {
     for (const timer of timersRef.current) {
@@ -57,7 +93,7 @@ export function ReplayOrchestrator({
     }
     timersRef.current = [];
     const clearImpulsesTimer = setTimeout(() => {
-      setImpulses([]);
+      clearImpulses();
     }, 0);
     onClearEffects?.();
 
@@ -89,16 +125,13 @@ export function ReplayOrchestrator({
       const durationMs = options?.durationMs ?? 800;
       const colorNodeId = options?.colorFromNodeId ?? sourceId;
 
-      setImpulses((current) => [
-        ...current,
-        {
-          key: nextImpulseKey(),
-          from,
-          to,
-          color: getEdgeColor(colorNodeId),
-          durationMs,
-        },
-      ]);
+      addImpulse({
+        key: nextImpulseKey(),
+        from,
+        to,
+        color: getEdgeColor(colorNodeId),
+        durationMs,
+      });
     };
 
     const schedule = (delayMs: number, callback: () => void) => {
@@ -166,11 +199,21 @@ export function ReplayOrchestrator({
     return () => {
       clearTimeout(clearImpulsesTimer);
     };
-  }, [command, commandEpoch, getEdgeColor, onActivateNode, onClearEffects, onHighlightEdge, positions]);
+  }, [
+    addImpulse,
+    clearImpulses,
+    command,
+    commandEpoch,
+    getEdgeColor,
+    onActivateNode,
+    onClearEffects,
+    onHighlightEdge,
+    positions,
+  ]);
 
   return (
     <group>
-      {impulses.map((impulse) => (
+      {renderImpulses.map((impulse) => (
         <SynapticImpulse
           key={impulse.key}
           from={impulse.from}
@@ -178,7 +221,7 @@ export function ReplayOrchestrator({
           color={impulse.color}
           durationMs={impulse.durationMs}
           onComplete={() => {
-            setImpulses((current) => current.filter((entry) => entry.key !== impulse.key));
+            removeImpulseByKey(impulse.key);
           }}
         />
       ))}
