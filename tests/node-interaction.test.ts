@@ -68,12 +68,35 @@ describe("NodeInteraction", () => {
           whyItMatters: "Stops malformed payloads early.",
           ruleConfidence: 0.82,
           ruleEpisodeCount: 3,
+          sourceObservations: [
+            {
+              graphNodeId: "episode-1",
+              observationIndex: 1,
+              whyItMatters: "Prevents malformed writes.",
+            },
+            {
+              graphNodeId: "episode-2",
+              observationIndex: 2,
+              whyItMatters: "Prevents malformed writes.",
+            },
+            {
+              graphNodeId: "episode-3",
+              observationIndex: 3,
+              whyItMatters: "Improves operational reliability.",
+            },
+          ],
         },
       }),
     );
 
     expect(html).toContain("Based on 3 observations");
     expect(html).toContain("Why it matters:");
+    expect(html).toContain("Why It Matters");
+    expect(html).toContain("Determined from 3 observations");
+    expect(html).toContain("#1");
+    expect(html).toContain("#2");
+    expect(html).toContain("#3");
+    expect(html).toContain("Prevents malformed writes.");
     expect(html).toContain("payload");
     expect(html).toContain("validation");
   });

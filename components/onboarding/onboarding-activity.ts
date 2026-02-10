@@ -2,6 +2,7 @@ import type { BrainEdgeModel, BrainNodeModel } from "@/components/brain/types";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
 import { activityEventMatchesNodeId } from "@/lib/feed/cross-selection";
 import { toImportActivityEvent } from "@/lib/feed/import-activity";
+import type { AssociatedRuleGroup } from "@/lib/feed/association-state";
 import { patternDisplayLabel } from "@/lib/feed/narrative-partition";
 import type { ConsolidationEvent } from "@/lib/codex/types";
 import type { ImportEvent } from "@/lib/github/types";
@@ -158,7 +159,8 @@ function hasNarrativeContent(narrative: SelectedNarrative) {
     nonEmptyText(narrative.theFix) !== null ||
     nonEmptyText(narrative.whyItMatters) !== null ||
     (typeof narrative.ruleConfidence === "number" && Number.isFinite(narrative.ruleConfidence)) ||
-    (typeof narrative.ruleEpisodeCount === "number" && Number.isFinite(narrative.ruleEpisodeCount))
+    (typeof narrative.ruleEpisodeCount === "number" && Number.isFinite(narrative.ruleEpisodeCount)) ||
+    (Array.isArray(narrative.sourceObservations) && narrative.sourceObservations.length > 0)
   );
 }
 
@@ -230,6 +232,11 @@ export interface SelectedNarrative {
   whyItMatters?: string;
   ruleConfidence?: number;
   ruleEpisodeCount?: number;
+  sourceObservations?: Array<{
+    graphNodeId: string;
+    observationIndex: number;
+    whyItMatters?: string;
+  }>;
 }
 
 interface ResolveSelectedNarrativeInput {
@@ -237,6 +244,8 @@ interface ResolveSelectedNarrativeInput {
   selectedNodeId: string | null;
   selectedNodeType: BrainNodeModel["type"] | null;
   selectedPatternKey: string | null;
+  insightGroups?: AssociatedRuleGroup[];
+  observationIndexMap?: Map<string, number>;
 }
 
 export function resolveSelectedNarrative({
@@ -244,6 +253,8 @@ export function resolveSelectedNarrative({
   selectedNodeId,
   selectedNodeType,
   selectedPatternKey,
+  insightGroups,
+  observationIndexMap,
 }: ResolveSelectedNarrativeInput): SelectedNarrative | null {
   if (!selectedNodeId || !selectedNodeType) {
     return null;
@@ -272,6 +283,40 @@ export function resolveSelectedNarrative({
       ruleConfidence,
       ruleEpisodeCount,
     };
+
+    if (Array.isArray(insightGroups) && insightGroups.length > 0 && observationIndexMap) {
+      const selectedRuleNodeId = selectedNodeId.startsWith("rule-") ? selectedNodeId : `rule-${selectedNodeId}`;
+      const matchingGroup = insightGroups.find((group) => {
+        const normalizedRuleNodeId = group.ruleId.startsWith("rule-") ? group.ruleId : `rule-${group.ruleId}`;
+        return normalizedRuleNodeId === selectedRuleNodeId;
+      });
+
+      if (matchingGroup) {
+        const sourceObservations = matchingGroup.episodes
+          .map((episode) => {
+            const graphNodeId = nonEmptyText(episode.graphNodeId);
+            if (!graphNodeId) {
+              return null;
+            }
+
+            const observationIndex = observationIndexMap.get(graphNodeId);
+            if (observationIndex === undefined) {
+              return null;
+            }
+
+            return {
+              graphNodeId,
+              observationIndex,
+              whyItMatters: nonEmptyText(episode.whyItMatters) ?? undefined,
+            };
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+        if (sourceObservations.length > 0) {
+          narrative.sourceObservations = sourceObservations;
+        }
+      }
+    }
 
     return hasNarrativeContent(narrative) ? narrative : null;
   }
