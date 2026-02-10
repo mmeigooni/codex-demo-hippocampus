@@ -71,6 +71,24 @@ export function toImportActivityEvent(event: ImportEvent, index: number): Activi
     };
   }
 
+  if (event.type === "snippets_extracted") {
+    const snippetCount = numberFromUnknown(event.data.snippet_count);
+    const fileCount = numberFromUnknown(event.data.file_count);
+    const searchRuleCount = numberFromUnknown(event.data.search_rule_count);
+
+    return {
+      id: prefix,
+      type: event.type,
+      title: `Extracted ${String(snippetCount ?? "?")} snippets from ${String(fileCount ?? "?")} files`,
+      subtitle:
+        searchRuleCount !== null
+          ? `${searchRuleCount} search rule${searchRuleCount === 1 ? "" : "s"} applied`
+          : undefined,
+      variant: "import",
+      raw: event.data,
+    };
+  }
+
   if (event.type === "episode_created") {
     const episode = event.data.episode as
       | {
@@ -79,6 +97,8 @@ export function toImportActivityEvent(event: ImportEvent, index: number): Activi
           salience_score?: number;
           the_pattern?: string;
           triggers?: string[];
+          what_happened?: string;
+          the_fix?: string;
           why_it_matters?: string;
         }
       | undefined;
@@ -96,6 +116,8 @@ export function toImportActivityEvent(event: ImportEvent, index: number): Activi
       subtitle: patternDisplayLabel(episode?.the_pattern),
       salience: Number(episode?.salience_score ?? 0),
       triggers: Array.isArray(episode?.triggers) ? episode.triggers : [],
+      whatHappened: typeof episode?.what_happened === "string" ? episode.what_happened : undefined,
+      theFix: typeof episode?.the_fix === "string" ? episode.the_fix : undefined,
       whyItMatters: typeof episode?.why_it_matters === "string" ? episode.why_it_matters : undefined,
       graphNodeId: graphNodeIdFromImportEvent(event) ?? undefined,
       snippet:

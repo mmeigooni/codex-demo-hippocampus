@@ -48,6 +48,7 @@ describe("partitionIntoNarrative", () => {
   it("filters hidden events and routes sections", () => {
     const events: ActivityEventView[] = [
       event({ id: "hidden-import", type: "pr_found", title: "Hidden import event" }),
+      event({ id: "hidden-snippets", type: "snippets_extracted", title: "Hidden snippets event" }),
       event({ id: "obs-1", type: "episode_created", title: "Observation 1", graphNodeId: "episode-1" }),
       event({ id: "pr-group-1", type: "pr_group", title: "PR group", graphNodeIds: ["episode-1"] }),
       event({ id: "milestone-1", type: "pattern_detected", title: "Pattern detected" }),
