@@ -25,43 +25,9 @@ import {
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
-
-function buildSseMessage(event: ImportEvent<unknown>) {
-  return `data: ${JSON.stringify(event)}\n\n`;
-}
-
-interface ProfileUserContext {
-  id: string;
-  githubUsername: string | null;
-  avatarUrl: string | null;
-}
-
-async function ensureProfileId(
-  user: ProfileUserContext,
-  supabase: Awaited<ReturnType<typeof createServerClient>>,
-) {
-  const { data: existingProfile } = await supabase.from("profiles").select("id").eq("user_id", user.id).maybeSingle();
-
-  if (existingProfile?.id) {
-    return existingProfile.id;
-  }
-
-  const { data: createdProfile, error } = await supabase
-    .from("profiles")
-    .insert({
-      user_id: user.id,
-      github_username: user.githubUsername,
-      avatar_url: user.avatarUrl,
-    })
-    .select("id")
-    .single();
-
-  if (error || !createdProfile?.id) {
-    throw new Error(error?.message ?? "Failed to create profile");
-  }
-
-  return createdProfile.id;
-}
+import { buildSseMessage } from "@/lib/sse/build-message";
+import { normalizeTextArray } from "@/lib/server/normalize";
+import { ensureProfileId, type ProfileUserContext } from "@/lib/supabase/profile";
 
 async function ensureSupabaseRepoId(
   user: ProfileUserContext,
@@ -110,16 +76,6 @@ async function listExistingEpisodePrNumbers(
   return collectExistingPrNumbers(data as Array<{ source_pr_number: number | null }> | null);
 }
 
-function normalizeTriggers(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-    .filter((entry) => entry.length > 0);
-}
-
 async function listSupabaseEpisodeSummariesForPrNumbers(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   repoId: string,
@@ -157,7 +113,7 @@ async function listSupabaseEpisodeSummariesForPrNumbers(
       what_happened: typeof row.what_happened === "string" ? row.what_happened : undefined,
       the_fix: typeof row.the_fix === "string" ? row.the_fix : undefined,
       why_it_matters: typeof row.why_it_matters === "string" ? row.why_it_matters : undefined,
-      triggers: normalizeTriggers(row.triggers),
+      triggers: normalizeTextArray(row.triggers),
     } as ImportEpisodeSummary);
   }
 
@@ -186,7 +142,7 @@ function listRuntimeEpisodeSummariesByPrNumber(repoId: string) {
       what_happened: episode.what_happened,
       the_fix: episode.the_fix,
       why_it_matters: episode.why_it_matters,
-      triggers: normalizeTriggers(episode.triggers),
+      triggers: normalizeTextArray(episode.triggers),
     });
   }
 

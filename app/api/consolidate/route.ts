@@ -24,20 +24,13 @@ import {
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
+import { buildSseMessage } from "@/lib/sse/build-message";
+import { normalizeTextArray } from "@/lib/server/normalize";
+import { ensureProfileId, type ProfileUserContext } from "@/lib/supabase/profile";
 import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 interface ConsolidateRequest {
   repo_id?: string;
-}
-
-interface ProfileUserContext {
-  id: string;
-  githubUsername: string | null;
-  avatarUrl: string | null;
-}
-
-function buildSseMessage(event: ConsolidationEvent) {
-  return `data: ${JSON.stringify(event)}\n\n`;
 }
 
 function createThrottledReasoningEmit(emit: Emit, intervalMs = 200) {
@@ -102,16 +95,6 @@ function createThrottledReasoningEmit(emit: Emit, intervalMs = 200) {
       buffered = null;
     },
   };
-}
-
-function normalizeTextArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-    .filter((entry) => entry.length > 0);
 }
 
 function normalizePatternKey(value: unknown): PatternKey {
@@ -275,37 +258,6 @@ function emitConsolidationReplay({
   });
 
   return true;
-}
-
-async function ensureProfileId(
-  user: ProfileUserContext,
-  supabase: Awaited<ReturnType<typeof createServerClient>>,
-) {
-  const { data: existingProfile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (existingProfile?.id) {
-    return existingProfile.id;
-  }
-
-  const { data: createdProfile, error } = await supabase
-    .from("profiles")
-    .insert({
-      user_id: user.id,
-      github_username: user.githubUsername,
-      avatar_url: user.avatarUrl,
-    })
-    .select("id")
-    .single();
-
-  if (error || !createdProfile?.id) {
-    throw new Error(error?.message ?? "Failed to create profile");
-  }
-
-  return createdProfile.id;
 }
 
 type Emit = (event: ConsolidationEvent) => void;

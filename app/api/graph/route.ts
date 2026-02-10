@@ -11,6 +11,7 @@ import {
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
+import { normalizeTextArray } from "@/lib/server/normalize";
 import { PATTERN_KEYS, type PatternKey } from "@/lib/memory/pattern-taxonomy";
 
 interface EpisodeGraphRecord {
@@ -28,16 +29,6 @@ interface RuleGraphRecord {
   triggers: string[];
   source_episode_ids: string[];
   rule_key: string;
-}
-
-function normalizeTextArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-    .filter((entry) => entry.length > 0);
 }
 
 function clampScore(score: number) {

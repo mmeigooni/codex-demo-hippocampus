@@ -15,15 +15,11 @@ import {
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
+import { buildSseMessage } from "@/lib/sse/build-message";
+import { ensureProfileId, type ProfileUserContext } from "@/lib/supabase/profile";
 
 interface DistributeRequest {
   repo_id?: string;
-}
-
-interface ProfileUserContext {
-  id: string;
-  githubUsername: string | null;
-  avatarUrl: string | null;
 }
 
 interface DistributionSummaryMetadata {
@@ -39,10 +35,6 @@ interface DistributionSummaryMetadata {
 }
 
 type Emit = (event: DistributionEvent) => void;
-
-function buildSseMessage(event: DistributionEvent) {
-  return `data: ${JSON.stringify(event)}\n\n`;
-}
 
 function toSummaryRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -77,37 +69,6 @@ function normalizePack(maybePack: unknown): ConsolidationModelOutput | null {
     salience_updates: Array.isArray(value.salience_updates) ? value.salience_updates : [],
     prune_candidates: Array.isArray(value.prune_candidates) ? value.prune_candidates : [],
   };
-}
-
-async function ensureProfileId(
-  user: ProfileUserContext,
-  supabase: Awaited<ReturnType<typeof createServerClient>>,
-) {
-  const { data: existingProfile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (existingProfile?.id) {
-    return existingProfile.id;
-  }
-
-  const { data: createdProfile, error } = await supabase
-    .from("profiles")
-    .insert({
-      user_id: user.id,
-      github_username: user.githubUsername,
-      avatar_url: user.avatarUrl,
-    })
-    .select("id")
-    .single();
-
-  if (error || !createdProfile?.id) {
-    throw new Error(error?.message ?? "Failed to create profile");
-  }
-
-  return createdProfile.id;
 }
 
 async function runSupabaseDistribution({
