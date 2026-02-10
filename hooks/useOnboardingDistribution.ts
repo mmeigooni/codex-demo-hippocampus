@@ -9,7 +9,6 @@ interface UseOnboardingDistributionOptions {
   activeRepoId: string | null;
   distributionRepoId: string | null;
   setDistributionRepoId: (value: string | null) => void;
-  consolidationSummary: { pack?: unknown } | null;
   setPhase: Dispatch<SetStateAction<OnboardingPhase>>;
   setError: (value: string | null) => void;
 }
@@ -18,14 +17,13 @@ export function useOnboardingDistribution({
   activeRepoId,
   distributionRepoId,
   setDistributionRepoId,
-  consolidationSummary,
   setPhase,
   setError,
 }: UseOnboardingDistributionOptions) {
   const { runDistribution, isDistributing, distributionResult, distributionPhase } = useDistributionStream();
 
   const handleRunDistribution = useCallback(async () => {
-    if (!activeRepoId || !consolidationSummary?.pack) {
+    if (!activeRepoId) {
       return;
     }
 
@@ -33,7 +31,7 @@ export function useOnboardingDistribution({
     setDistributionRepoId(activeRepoId);
     setPhase("distributing");
     await runDistribution(activeRepoId);
-  }, [activeRepoId, consolidationSummary?.pack, runDistribution, setDistributionRepoId, setError, setPhase]);
+  }, [activeRepoId, runDistribution, setDistributionRepoId, setError, setPhase]);
 
   useEffect(() => {
     if (!distributionRepoId || distributionRepoId !== activeRepoId) {
