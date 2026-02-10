@@ -15,6 +15,7 @@ interface RepoSelectorProps {
   collapsed?: boolean;
   activeRepoName?: string;
   collapsedStatusText?: string;
+  importComplete?: boolean;
 }
 
 function parseFullName(fullName: string) {
@@ -34,6 +35,7 @@ export function RepoSelector({
   collapsed = false,
   activeRepoName,
   collapsedStatusText,
+  importComplete = false,
 }: RepoSelectorProps) {
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [hasLoadedRepos, setHasLoadedRepos] = useState(false);
@@ -44,6 +46,9 @@ export function RepoSelector({
 
   const demoRepo = useMemo(() => parseFullName(demoRepoFullName), [demoRepoFullName]);
   const showExpanded = !collapsed || userExpanded;
+  const collapsedMessage =
+    collapsedStatusText ??
+    (importComplete ? `Imported ${activeRepoName ?? "repository"}` : `Importing ${activeRepoName ?? "repository"}...`);
 
   useEffect(() => {
     if (collapsed) {
@@ -111,12 +116,16 @@ export function RepoSelector({
           className="flex h-12 w-full items-center justify-between rounded-lg border border-cyan-700/30 bg-zinc-900/60 px-4 text-left"
         >
           <div className="flex items-center gap-2 text-sm text-zinc-100">
-            <motion.span
-              className="h-2 w-2 rounded-full bg-cyan-300"
-              animate={{ opacity: [0.35, 1, 0.35] }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-            />
-            <span>{collapsedStatusText ?? `Importing ${activeRepoName ?? "repository"}...`}</span>
+            {importComplete ? (
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            ) : (
+              <motion.span
+                className="h-2 w-2 rounded-full bg-cyan-300"
+                animate={{ opacity: [0.35, 1, 0.35] }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+              />
+            )}
+            <span>{collapsedMessage}</span>
           </div>
           <ChevronDown
             className={`h-4 w-4 text-zinc-400 transition-transform ${userExpanded ? "rotate-180" : ""}`}

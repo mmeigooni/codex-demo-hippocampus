@@ -18,6 +18,7 @@ interface NarrativeFeedProps {
   sections: NarrativeSections;
   maxItems?: number;
   importStatusText?: string | null;
+  importStarted?: boolean;
   selectedNodeId?: string | null;
   selectionSource?: SelectionSource | null;
   onSelectEvent?: (event: ActivityEventView) => void;
@@ -81,6 +82,7 @@ export function NarrativeFeed({
   sections,
   maxItems = 12,
   importStatusText = null,
+  importStarted,
   selectedNodeId = null,
   selectionSource = null,
   onSelectEvent,
@@ -250,54 +252,59 @@ export function NarrativeFeed({
     [sections.insights.length],
   );
   const showPhaseProgress = sections.phase !== "observing" || sections.observations.length > 0;
+  const shouldShowObservingSection = importStarted !== false;
 
   return (
     <LayoutGroup id="narrative-feed">
-      <div className="max-h-[500px] space-y-3 overflow-auto pr-1">
-        {showPhaseProgress ? <PhaseProgressIndicator phase={sections.phase} complete={showWhySection} /> : null}
+      <div className="h-full min-h-0 space-y-3 overflow-auto pr-1">
+        {showPhaseProgress && shouldShowObservingSection ? (
+          <PhaseProgressIndicator phase={sections.phase} complete={showWhySection} />
+        ) : null}
 
-        <CollapsiblePhaseSection
-          isActive={sections.phase === "observing"}
-          isComplete={sections.phase !== "observing"}
-          summary={<span>{observationSummary}</span>}
-          label="Code Reviews"
-          className="space-y-2"
-        >
-          <SectionHeader icon={<Eye className="h-3.5 w-3.5" />} title="What I Observed" />
-          <div className="space-y-2">
-            <AnimatePresence initial={false}>
-              {visibleObservations.length === 0 ? (
-                <ImportLoadingIndicator statusText={importStatusText} />
-              ) : (
-                visibleObservations.map((event, index) => (
-                  <motion.div
-                    key={event.id}
-                    layout
-                    layoutId={event.id}
-                    transition={CARD_LAYOUT_TRANSITION}
-                    ref={(element) => {
-                      eventElementMapRef.current.set(event.id, element);
-                    }}
-                    data-activity-event-id={event.id}
-                  >
-                    <ObservationRow
-                      event={event}
-                      index={index}
-                      observationIndex={
-                        typeof event.graphNodeId === "string"
-                          ? observationIndexMap.get(event.graphNodeId)
-                          : undefined
-                      }
-                      selected={activityEventMatchesNodeId(event, selectedNodeId)}
-                      pinnedFromGraph={pinnedEventId === event.id}
-                      onSelect={onSelectEvent}
-                    />
-                  </motion.div>
-                ))
-              )}
-            </AnimatePresence>
-          </div>
-        </CollapsiblePhaseSection>
+        {shouldShowObservingSection ? (
+          <CollapsiblePhaseSection
+            isActive={sections.phase === "observing"}
+            isComplete={sections.phase !== "observing"}
+            summary={<span>{observationSummary}</span>}
+            label="Code Reviews"
+            className="space-y-2"
+          >
+            <SectionHeader icon={<Eye className="h-3.5 w-3.5" />} title="What I Observed" />
+            <div className="space-y-2">
+              <AnimatePresence initial={false}>
+                {visibleObservations.length === 0 ? (
+                  <ImportLoadingIndicator statusText={importStatusText} />
+                ) : (
+                  visibleObservations.map((event, index) => (
+                    <motion.div
+                      key={event.id}
+                      layout
+                      layoutId={event.id}
+                      transition={CARD_LAYOUT_TRANSITION}
+                      ref={(element) => {
+                        eventElementMapRef.current.set(event.id, element);
+                      }}
+                      data-activity-event-id={event.id}
+                    >
+                      <ObservationRow
+                        event={event}
+                        index={index}
+                        observationIndex={
+                          typeof event.graphNodeId === "string"
+                            ? observationIndexMap.get(event.graphNodeId)
+                            : undefined
+                        }
+                        selected={activityEventMatchesNodeId(event, selectedNodeId)}
+                        pinnedFromGraph={pinnedEventId === event.id}
+                        onSelect={onSelectEvent}
+                      />
+                    </motion.div>
+                  ))
+                )}
+              </AnimatePresence>
+            </div>
+          </CollapsiblePhaseSection>
+        ) : null}
 
         <CollapsiblePhaseSection
           isActive={sections.phase === "analyzing"}
