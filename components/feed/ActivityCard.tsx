@@ -91,7 +91,13 @@ export function ActivityCard({
 
   useEffect(() => {
     if (pinnedFromGraph) {
-      setExpanded(true);
+      const expandTimer = setTimeout(() => {
+        setExpanded(true);
+      }, 0);
+
+      return () => {
+        clearTimeout(expandTimer);
+      };
     }
   }, [pinnedFromGraph]);
 

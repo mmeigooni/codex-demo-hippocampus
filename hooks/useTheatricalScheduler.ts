@@ -269,7 +269,7 @@ export function useTheatricalScheduler<TEvent extends ScheduledEvent = Scheduled
   const [snapshot, setSnapshot] = useState<SchedulerSnapshot>({ isReplaying: false, remaining: 0 });
   const controllerRef = useRef<TheatricalSchedulerController<TEvent> | null>(null);
 
-  if (!controllerRef.current) {
+  if (controllerRef.current == null) {
     controllerRef.current = createTheatricalSchedulerController<TEvent>({
       ...options,
       onStateChange: setSnapshot,

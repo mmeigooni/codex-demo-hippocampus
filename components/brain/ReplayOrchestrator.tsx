@@ -56,11 +56,15 @@ export function ReplayOrchestrator({
       clearTimeout(timer);
     }
     timersRef.current = [];
-    setImpulses([]);
+    const clearImpulsesTimer = setTimeout(() => {
+      setImpulses([]);
+    }, 0);
     onClearEffects?.();
 
     if (!command) {
-      return;
+      return () => {
+        clearTimeout(clearImpulsesTimer);
+      };
     }
 
     const nextImpulseKey = () => {
@@ -159,6 +163,9 @@ export function ReplayOrchestrator({
       default:
         break;
     }
+    return () => {
+      clearTimeout(clearImpulsesTimer);
+    };
   }, [command, commandEpoch, getEdgeColor, onActivateNode, onClearEffects, onHighlightEdge, positions]);
 
   return (

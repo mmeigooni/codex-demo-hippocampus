@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -15,14 +15,16 @@ function renderSection({
   summary?: string;
   label?: string;
 } = {}) {
+  const props: ComponentProps<typeof CollapsiblePhaseSection> = {
+    isActive,
+    isComplete,
+    summary: createElement("span", null, summary),
+    label,
+    children: createElement("div", null, "section-body"),
+  };
+
   return renderToStaticMarkup(
-    createElement(CollapsiblePhaseSection, {
-      isActive,
-      isComplete,
-      summary: createElement("span", null, summary),
-      label,
-      children: createElement("div", null, "section-body"),
-    }),
+    createElement(CollapsiblePhaseSection, props),
   );
 }
 

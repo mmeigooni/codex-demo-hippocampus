@@ -61,7 +61,13 @@ export function RuleGroupCard({
 
   useEffect(() => {
     if (pinnedFromGraph) {
-      setExpanded(true);
+      const expandTimer = setTimeout(() => {
+        setExpanded(true);
+      }, 0);
+
+      return () => {
+        clearTimeout(expandTimer);
+      };
     }
   }, [pinnedFromGraph]);
 

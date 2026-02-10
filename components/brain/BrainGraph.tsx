@@ -207,7 +207,13 @@ export function BrainGraph({
 
   useEffect(() => {
     if (externalSelectedNodeId !== null && externalSelectedNodeId !== undefined) {
-      setSelectedNodeId(null);
+      const resetTimer = setTimeout(() => {
+        setSelectedNodeId(null);
+      }, 0);
+
+      return () => {
+        clearTimeout(resetTimer);
+      };
     }
   }, [externalSelectedNodeId]);
 

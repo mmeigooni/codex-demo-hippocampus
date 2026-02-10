@@ -32,7 +32,13 @@ export function CollapsiblePhaseSection({
 
   useEffect(() => {
     if (isActive) {
-      setUserExpanded(false);
+      const collapseTimer = setTimeout(() => {
+        setUserExpanded(false);
+      }, 0);
+
+      return () => {
+        clearTimeout(collapseTimer);
+      };
     }
   }, [isActive]);
 
