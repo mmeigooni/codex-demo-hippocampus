@@ -11,9 +11,8 @@ import type {
 } from "@/components/brain/types";
 import type { ActivityEventView } from "@/components/feed/ActivityCard";
 import { NarrativeFeed } from "@/components/feed/NarrativeFeed";
-import { ConsolidationCTA } from "@/components/onboarding/ConsolidationCTA";
-import { DistributionCTA } from "@/components/onboarding/DistributionCTA";
 import { RepoSelector } from "@/components/onboarding/RepoSelector";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConsolidationStream } from "@/hooks/useConsolidationStream";
 import { useConsolidationVisuals } from "@/hooks/useConsolidationVisuals";
@@ -462,7 +461,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
 
   const {
     runConsolidation,
-    phase: consolidationPhase,
     events: consolidationEvents,
     progress: consolidationProgress,
     isRunning: isConsolidating,
@@ -477,8 +475,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
     isDistributing,
     distributionResult,
     distributionPhase,
-    copiedMarkdown,
-    copyDistributionMarkdown,
   } = useDistributionStream();
 
   const activityEvents = useMemo(() => {
@@ -1258,6 +1254,35 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           {noConsolidatedRules ? (
             <p className="text-xs text-amber-100/90">Run Sleep Cycle to generate rules.</p>
           ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {PHASE_ORDER[phase] >= PHASE_ORDER.ready ? (
+              <Button
+                onClick={handleRunConsolidation}
+                disabled={isConsolidating || isDistributing || !activeRepoId}
+              >
+                {isConsolidating ? "Running sleep cycle..." : "Run Sleep Cycle"}
+              </Button>
+            ) : null}
+            {PHASE_ORDER[phase] >= PHASE_ORDER.consolidated ? (
+              <Button
+                onClick={handleRunDistribution}
+                disabled={isConsolidating || isDistributing || !consolidationSummary?.pack}
+                variant="secondary"
+              >
+                {isDistributing
+                  ? "Distributing..."
+                  : distributionResult && !distributionResult.error
+                    ? "Distributed"
+                    : "Distribute to repo"}
+              </Button>
+            ) : null}
+          </div>
+          {isConsolidating ? (
+            <p className="text-xs text-zinc-400">
+              Patterns: {consolidationProgress.patterns} · Rules: {consolidationProgress.rules} · Salience:{" "}
+              {consolidationProgress.salienceUpdates} · Contradictions: {consolidationProgress.contradictions}
+            </p>
+          ) : null}
 
           <div className="grid gap-4 xl:grid-cols-[1fr_1.6fr]">
             <div className="max-h-[540px] overflow-hidden px-1">
@@ -1283,31 +1308,6 @@ export function OnboardingFlow({ demoRepoFullName }: OnboardingFlowProps) {
           </div>
         </CardContent>
       </Card>
-
-      {PHASE_ORDER[phase] >= PHASE_ORDER.ready ? (
-        <ConsolidationCTA
-          phase={phase}
-          dreamPhase={consolidationPhase}
-          onRun={handleRunConsolidation}
-          isRunning={isConsolidating}
-          progress={consolidationProgress}
-          reasoningText={reasoningText}
-          isReasoningActive={isReasoningActive}
-          error={phase === "error" ? error : null}
-        />
-      ) : null}
-
-      {PHASE_ORDER[phase] >= PHASE_ORDER.consolidated ? (
-        <DistributionCTA
-          phase={phase}
-          onDistribute={handleRunDistribution}
-          isDistributing={isDistributing}
-          distributionResult={distributionResult}
-          distributionPhase={distributionPhase}
-          onCopyMarkdown={copyDistributionMarkdown}
-          copiedMarkdown={copiedMarkdown}
-        />
-      ) : null}
     </div>
   );
 }
