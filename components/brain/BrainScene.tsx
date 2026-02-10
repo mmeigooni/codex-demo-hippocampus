@@ -14,6 +14,15 @@ import { ParticleField } from "@/components/brain/ParticleField";
 import type { ConsolidationVisualState } from "@/components/brain/consolidation-visual-types";
 import type { BrainEdgeModel, BrainNodeModel, PositionedBrainNode } from "@/components/brain/types";
 
+interface SelectedNarrative {
+  whatHappened?: string;
+  thePattern?: string;
+  theFix?: string;
+  whyItMatters?: string;
+  ruleConfidence?: number;
+  ruleEpisodeCount?: number;
+}
+
 interface BrainSceneProps {
   nodes: BrainNodeModel[];
   edges: BrainEdgeModel[];
@@ -22,6 +31,7 @@ interface BrainSceneProps {
   pulsingNodeIds?: Set<string> | null;
   pulseEpoch?: number;
   consolidationVisuals?: ConsolidationVisualState;
+  selectedNarrative?: SelectedNarrative | null;
   externalSelectedNodeId?: string | null;
   onNodeSelectionCommit?: (node: PositionedBrainNode | null) => void;
 }
@@ -94,6 +104,7 @@ export function BrainScene({
   pulsingNodeIds,
   pulseEpoch,
   consolidationVisuals,
+  selectedNarrative,
   externalSelectedNodeId,
   onNodeSelectionCommit,
 }: BrainSceneProps) {
@@ -190,7 +201,7 @@ export function BrainScene({
         )}
       </div>
 
-      <NodeInteraction node={selectedNode} />
+      <NodeInteraction node={selectedNode} narrative={selectedNarrative ?? null} />
     </div>
   );
 }
