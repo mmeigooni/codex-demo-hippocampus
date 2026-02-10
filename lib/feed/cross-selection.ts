@@ -74,7 +74,7 @@ export function buildFeedRenderWindow<TEvent extends GraphLinkedActivityEvent>({
   selectedNodeId: string | null;
   source: SelectionSource | null;
 }) {
-  const visible = events.slice(-maxItems).reverse();
+  const visible = events.slice(0, maxItems);
 
   if (!selectedNodeId || source !== "graph") {
     return {
@@ -83,7 +83,7 @@ export function buildFeedRenderWindow<TEvent extends GraphLinkedActivityEvent>({
     };
   }
 
-  const selectedEvent = [...events].reverse().find((event) => activityEventMatchesNodeId(event, selectedNodeId)) ?? null;
+  const selectedEvent = events.find((event) => activityEventMatchesNodeId(event, selectedNodeId)) ?? null;
 
   if (!selectedEvent) {
     return {
