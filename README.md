@@ -15,12 +15,18 @@ Fill in the environment variables:
 | Variable | Description |
 |----------|-------------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase anon/public key |
-| `SUPABASE_SECRET_KEY` | Supabase service role key |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key |
+| `SUPABASE_DB_URL` | Optional. Direct Postgres URL for migration/verification commands |
 | `OPENAI_API_KEY` | OpenAI API key (Codex SDK access) |
 | `DEMO_REPO` | Optional. GitHub `owner/repo` for demo salience calibration |
 
-Run the Supabase migrations (`supabase/migrations/`) against your project, then:
+Run the Supabase instance preflight check:
+
+```bash
+npm run check:supabase
+```
+
+If any required tables are missing, run the migrations in `supabase/migrations/` against your project. Then:
 
 ```bash
 npm install
@@ -39,6 +45,39 @@ The app runs on `http://localhost:3000`. Sign in with GitHub OAuth (public repos
 | `npm run build` | Production build |
 | `npm test` | Run test suite (Vitest) |
 | `npm run lint` | Lint with ESLint |
+| `npm run check:supabase` | Validate Supabase URL/key, GitHub auth provider, and required Data API tables |
+
+## Recovering From a Paused Supabase Project
+
+Use this checklist when Supabase resumes a paused project and connection details change.
+
+1. Update local and deployment env vars:
+   - `NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...`
+2. In Supabase Auth settings:
+   - Set Site URL to your deployed app URL.
+   - Add redirect URLs:
+     - `http://localhost:3000/api/auth/callback`
+     - `https://<production-domain>/api/auth/callback`
+3. In the GitHub OAuth app used by Supabase, set callback URL to:
+   - `https://<project-ref>.supabase.co/auth/v1/callback`
+4. Run:
+
+```bash
+npm run check:supabase
+```
+
+5. If schema checks fail, verify required tables via Postgres:
+
+```bash
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "select to_regclass('public.profiles') as profiles, to_regclass('public.repos') as repos, to_regclass('public.episodes') as episodes, to_regclass('public.rules') as rules, to_regclass('public.index_entries') as index_entries, to_regclass('public.consolidation_runs') as consolidation_runs;"
+```
+
+6. If any table is `NULL`, apply migrations in order:
+
+```bash
+for f in supabase/migrations/*.sql; do psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f "$f"; done
+```
 
 ## Architecture
 
