@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:supabase": "node --env-file=.env.local scripts/check-supabase-instance.mjs"
   },
   "dependencies": {
     "@ast-grep/napi": "^0.40.5",
