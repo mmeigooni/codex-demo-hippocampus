@@ -26,7 +26,7 @@ Run the Supabase instance preflight check:
 npm run check:supabase
 ```
 
-If any required tables are missing, run the migrations in `supabase/migrations/` against your project. Then:
+If checks fail, run the missing migrations in `supabase/migrations/` against your project. Note that table existence alone is not sufficient: import/graph/consolidation also require migration `002_pattern_rule_keys.sql` (`episodes.pattern_key`, `rules.rule_key`).
 
 ```bash
 npm install
@@ -45,7 +45,7 @@ The app runs on `http://localhost:3000`. Sign in with GitHub OAuth (public repos
 | `npm run build` | Production build |
 | `npm test` | Run test suite (Vitest) |
 | `npm run lint` | Lint with ESLint |
-| `npm run check:supabase` | Validate Supabase URL/key, GitHub auth provider, and required Data API tables |
+| `npm run check:supabase` | Validate Supabase URL/key, GitHub auth provider, required tables, and required schema columns |
 
 ## Recovering From a Paused Supabase Project
 
@@ -78,6 +78,10 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "select to_regclass('public.profil
 ```bash
 for f in supabase/migrations/*.sql; do psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f "$f"; done
 ```
+
+7. If all tables exist but `npm run check:supabase` still fails for missing columns, run migration `supabase/migrations/002_pattern_rule_keys.sql` explicitly. This migration adds:
+   - `public.episodes.pattern_key`
+   - `public.rules.rule_key`
 
 ## Architecture
 
