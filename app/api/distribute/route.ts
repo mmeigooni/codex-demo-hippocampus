@@ -11,7 +11,6 @@ import { fetchRepo } from "@/lib/github/client";
 import {
   isProfilesSchemaNotReadyError,
   resolveStorageModeAfterProfilesPreflight,
-  SCHEMA_NOT_READY_PROFILES_CODE,
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
@@ -425,7 +424,7 @@ export async function POST(request: Request) {
       return Response.json(
         {
           error: error.message,
-          code: SCHEMA_NOT_READY_PROFILES_CODE,
+          code: error.code,
         },
         { status: 503 },
       );

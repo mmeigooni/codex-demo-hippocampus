@@ -7,7 +7,6 @@ import {
 import {
   isProfilesSchemaNotReadyError,
   resolveStorageModeAfterProfilesPreflight,
-  SCHEMA_NOT_READY_PROFILES_CODE,
   type StorageMode,
 } from "@/lib/supabase/schema-guard";
 import { createServerClient } from "@/lib/supabase/server";
@@ -144,7 +143,7 @@ export async function GET(request: Request) {
       return Response.json(
         {
           error: error.message,
-          code: SCHEMA_NOT_READY_PROFILES_CODE,
+          code: error.code,
         },
         { status: 503 },
       );
