@@ -9,6 +9,18 @@ const REQUIRED_TABLES = [
   "index_entries",
   "consolidation_runs",
 ];
+const REQUIRED_COLUMN_PROBES = [
+  {
+    table: "episodes",
+    select: "id,pattern_key",
+    column: "episodes.pattern_key",
+  },
+  {
+    table: "rules",
+    select: "id,rule_key",
+    column: "rules.rule_key",
+  },
+];
 
 function fail(message) {
   console.error(`FAIL: ${message}`);
@@ -25,6 +37,15 @@ function isLikelySchemaError(message) {
     normalized.includes("could not find the table") ||
     normalized.includes("public.") ||
     normalized.includes("relation")
+  );
+}
+
+function isMissingRequiredColumnError(message, requiredColumn) {
+  const normalized = String(message ?? "").toLowerCase();
+  const column = String(requiredColumn).toLowerCase();
+  return (
+    normalized.includes(column) &&
+    (normalized.includes("does not exist") || normalized.includes("column") || normalized.includes("42703"))
   );
 }
 
@@ -137,6 +158,47 @@ async function main() {
       pass(`Data API table check passed: ${table}.`);
     } catch (error) {
       fail(`Request failed for table ${table}: ${error instanceof Error ? error.message : String(error)}`);
+      hasErrors = true;
+    }
+  }
+
+  for (const probe of REQUIRED_COLUMN_PROBES) {
+    const probeUrl = new URL(`/rest/v1/${probe.table}`, baseUrl);
+    probeUrl.searchParams.set("select", probe.select);
+    probeUrl.searchParams.set("limit", "1");
+
+    try {
+      const { response, text, json } = await fetchWithBody(probeUrl.toString(), restHeaders);
+
+      if (!response.ok) {
+        if (isMissingRequiredColumnError(text, probe.column)) {
+          fail(
+            `Required schema column is missing: ${probe.column}. Action: run supabase/migrations/002_pattern_rule_keys.sql and retry.`,
+          );
+        } else {
+          fail(`Required column check failed for ${probe.column} (${response.status}): ${text}`);
+        }
+        hasErrors = true;
+        continue;
+      }
+
+      if (!Array.isArray(json)) {
+        fail(
+          `Unexpected response for required column check ${probe.column}: expected JSON array, got ${
+            json === null ? "non-JSON" : typeof json
+          }.`,
+        );
+        hasErrors = true;
+        continue;
+      }
+
+      pass(`Required column check passed: ${probe.column}.`);
+    } catch (error) {
+      fail(
+        `Request failed for required column check ${probe.column}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
       hasErrors = true;
     }
   }
