@@ -1,0 +1,15 @@
+model = "gpt-5-mini"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+# Hippocampus default behavior for local development.
+instructions = "Build Hippocampus incrementally by wave. Enforce structured output schemas for Codex calls, and prefer deterministic extraction before LLM inference."
+
+[profiles.triggers]
+model = "gpt-5-nano"
+
+[profiles.encoding]
+model = "gpt-5-mini"
+
+[profiles.consolidation]
+model = "gpt-5.2"
