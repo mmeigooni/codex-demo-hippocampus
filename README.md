@@ -4,6 +4,8 @@ A shared memory system for engineering teams. Hippocampus ingests your team's me
 
 The name comes from the region of the human brain responsible for consolidating short-term memories into long-term knowledge. Codex makes individual developers superhuman, but teams don't have memory. Hippocampus gives them one.
 
+Background reading for reviewers: [Codex Agent Harness Evaluation](./CODEX_HARNESS_EVALUATION.md)
+
 ## Quick Start
 
 ```bash
